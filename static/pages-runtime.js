@@ -3,8 +3,8 @@ const nativeFetch=window.fetch.bind(window);
 let snapshot=null,active=true;
 let liveBase=localStorage.getItem('live_feed_url')||'', liveState='Snapshot mode',liveBusy=false;
 const linkFeed=new URLSearchParams(location.hash.slice(1)).get('feed');
-function validFeed(value){try{const u=new URL(value);return u.protocol==='https:'&&!u.username&&!u.password&&!u.search&&!u.hash?u.origin:''}catch{return ''}}
-if(linkFeed&&validFeed(linkFeed)){liveBase=validFeed(linkFeed);localStorage.setItem('live_feed_url',liveBase);history.replaceState(null,'',location.pathname+location.search)}
+function validFeed(value){try{let u=new URL(value);const embedded=new URLSearchParams(u.hash.slice(1)).get('feed');if(embedded)u=new URL(embedded);return u.protocol==='https:'&&!u.username&&!u.password&&!u.search&&!u.hash?u.origin:''}catch{return ''}}
+if(linkFeed&&validFeed(linkFeed)){liveBase=validFeed(linkFeed);localStorage.setItem('live_feed_url',liveBase);localStorage.setItem('feed_mode','live');history.replaceState(null,'',location.pathname+location.search)}
 if(liveBase)liveState='Connecting to live feed…';
 async function refreshLive(){
  if(!liveBase||liveBusy||document.hidden)return;liveBusy=true;
@@ -17,7 +17,12 @@ const key=s=>s.toLowerCase().split(/[\s_-]+/).sort().join('_');
 const inventoryNames=()=>JSON.parse(localStorage.getItem('adoptme_inventory')||'[]');
 function affordable(give,have){const counts=new Map();have.forEach(n=>counts.set(key(n),(counts.get(key(n))||0)+1));return give.every(n=>{const k=key(n),v=counts.get(k)||0;counts.set(k,v-1);return v>0})}
 async function loadSnapshot(){const r=await nativeFetch('./snapshot.json',{cache:'no-cache'});if(!r.ok)throw Error('Snapshot unavailable');snapshot=await r.json();return snapshot}
-const ready=loadSnapshot();
+const ready=(async()=>{
+ if(!liveBase&&localStorage.getItem('feed_mode')!=='snapshot'){
+  try{const r=await nativeFetch('./live-config.json',{cache:'no-cache'});if(r.ok){const c=await r.json();const u=validFeed(c.feed_url);if(u){liveBase=u;liveState='Connecting to live feed…';localStorage.setItem('live_feed_url',u)}}}catch{}
+ }
+ return loadSnapshot();
+})();
 ready.then(refreshLive).catch(console.error);
 window.fetch=async function(input,options={}){
  const url=new URL(String(input),location.href),path=url.pathname;
@@ -46,9 +51,10 @@ document.addEventListener('DOMContentLoaded',()=>{
  const settings=document.createElement('details');settings.className='toolbox';
  const summary=document.createElement('summary');summary.textContent='Live connection';settings.append(summary);
  const help=document.createElement('p');help.className='muted';help.textContent='Run the read-only collector on your PC and paste its HTTPS tunnel address. Inventory and focus stay independent in this browser. Closing the collector stops live updates.';settings.append(help);
- const input=document.createElement('input');input.type='url';input.placeholder='https://your-tunnel.trycloudflare.com';input.value=liveBase;input.setAttribute('aria-label','Live feed HTTPS address');settings.append(input);
- const connect=document.createElement('button');connect.className='primary';connect.textContent='Connect live';connect.onclick=async()=>{const u=validFeed(input.value.trim());if(!u){help.textContent='Enter an HTTPS address without a password, query, or fragment.';return}liveBase=u;localStorage.setItem('live_feed_url',u);await ready;await refreshLive();updateStatus()};settings.append(connect);
- const disconnect=document.createElement('button');disconnect.className='outline';disconnect.textContent='Use snapshots';disconnect.onclick=async()=>{liveBase='';localStorage.removeItem('live_feed_url');await loadSnapshot();updateStatus()};settings.append(disconnect);
+ const input=document.createElement('input');input.type='url';input.placeholder='Paste a live connection link';input.value=liveBase;input.setAttribute('aria-label','Live feed HTTPS address');settings.append(input);
+ ready.then(()=>{if(!input.value)input.value=liveBase}).catch(console.error);
+ const connect=document.createElement('button');connect.className='primary';connect.textContent='Connect live';connect.onclick=async()=>{await ready;const u=validFeed(input.value.trim()||liveBase);if(!u){help.textContent='Paste the live dashboard link shared with you, then tap Connect live.';return}liveBase=u;input.value=u;localStorage.setItem('live_feed_url',u);localStorage.setItem('feed_mode','live');await refreshLive();updateStatus()};settings.append(connect);
+ const disconnect=document.createElement('button');disconnect.className='outline';disconnect.textContent='Use snapshots';disconnect.onclick=async()=>{await ready;liveBase='';localStorage.removeItem('live_feed_url');localStorage.setItem('feed_mode','snapshot');await loadSnapshot();updateStatus()};settings.append(disconnect);
  document.getElementById('pages-status').after(settings);
  function navigationUrl(path){return path+(liveBase?'#feed='+encodeURIComponent(liveBase):'')}
  function syncNavigation(){
