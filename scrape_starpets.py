@@ -1,5 +1,5 @@
-﻿"""
-scrape_starpets_v3.py â€” demand with honest per-variant aggregation.
+"""
+scrape_starpets_v3.py — demand with honest per-variant aggregation.
 
 What changed vs v2
 ------------------
@@ -128,7 +128,7 @@ def _build_filter(price_min=None, price_max=None):
     return f
 
 
-# â”€â”€ Client pool â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Client pool ───────────────────────────────────────────────────────
 class DemandClientPool:
     def __init__(self, proxies, size=50):
         self.proxies = proxies
@@ -161,7 +161,7 @@ class DemandClientPool:
                 pass
 
 
-# â”€â”€ Pricing crawl (unchanged behaviour) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Pricing crawl (unchanged behaviour) ───────────────────────────────
 async def fetch_price_page(proxies, page, price_min=None, price_max=None, stats=None):
     for _ in range(3):
         proxy = random.choice(proxies) if proxies else None
@@ -252,7 +252,7 @@ async def crawl_prices(proxies, stats):
     return all_items
 
 
-# â”€â”€ Demand â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Demand ────────────────────────────────────────────────────────────
 def _variant_key(it):
     rn = _slugify(it.get("realName") or "")
     if not rn:
@@ -449,7 +449,7 @@ async def build_demand(pool, groups, sum_mode, days=DAYS, limit=None, names=None
     return out
 
 
-# â”€â”€ Catalog â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Catalog ───────────────────────────────────────────────────────────
 def _slugify(s):
     return re.sub(r"[^a-z0-9]+", "_", s.lower()).strip("_")
 
@@ -520,7 +520,7 @@ def aggregate_catalog(items_by_id, demand, keep_prices=False):
     return catalog
 
 
-# â”€â”€ Main â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Main ──────────────────────────────────────────────────────────────
 def parse_args(argv=None):
     p = argparse.ArgumentParser(description="StarPets catalog + demand scraper")
     p.add_argument("--sum", dest="sum_mode", action="store_true",
