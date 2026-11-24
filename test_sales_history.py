@@ -17,7 +17,7 @@ class HistoryTests(unittest.TestCase):
                 with self.assertRaises(HistoryError) as error:
                     collector.request('GET', '/test')
             self.assertNotIn('secret-proxy-password', str(error.exception))
-            self.assertEqual(error.exception.delay, 900)
+            self.assertEqual(error.exception.delay, 15)
 
     def test_rate_limit_preserves_retry_after(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -27,6 +27,39 @@ class HistoryTests(unittest.TestCase):
                 with self.assertRaises(HistoryError) as error:
                     collector.request('GET', '/test')
             self.assertEqual(error.exception.delay, 1800)
+
+    def test_item_failure_does_not_pause_others_and_success_clears_retry(self):
+        with tempfile.TemporaryDirectory() as temp:
+            c = HistoryCollector(Path(temp) / 'history.json')
+            with patch.object(c, 'fetch', side_effect=HistoryError('bad pagination')):
+                c.process_one('bad', {'name': 'Bad'})
+            self.assertEqual(c.retry_at, 0)
+            self.assertIn('bad', c.retries)
+            with patch.object(c, 'fetch', return_value={'daily_sales': []}):
+                c.process_one('good', {'name': 'Good'})
+                c.process_one('bad', {'name': 'Bad'})
+            self.assertIn('good', c.records)
+            self.assertNotIn('bad', c.retries)
+            self.assertNotIn('bad', c.errors)
+
+    def test_network_failure_pauses_briefly_and_preserves_cache(self):
+        with tempfile.TemporaryDirectory() as temp:
+            c = HistoryCollector(Path(temp) / 'history.json')
+            c.records['pet'] = {'previous': True}
+            with patch.object(c, 'fetch', side_effect=HistoryError('network', 15, True)):
+                c.process_one('pet', {'name': 'Pet'})
+            self.assertGreater(c.retry_at, 0)
+            self.assertEqual(c.records['pet'], {'previous': True})
+            self.assertIn('pet', c.retries)
+
+    def test_catalog_can_complete_beyond_four_pages(self):
+        with tempfile.TemporaryDirectory() as temp:
+            c = HistoryCollector(Path(temp) / 'history.json')
+            replies = [{'status': True, 'count': 5, 'items': [dict(id=i, realName='panda', pumping='default')]} for i in range(5)]
+            replies += [{'data': {'statistics': []}}] * 5
+            with patch.object(c, 'request', side_effect=replies):
+                result = c.fetch('panda|default|0|0', {'name': 'Panda'})
+            self.assertEqual(len(result['product_ids']), 5)
 
     def test_errors_and_missing_schema_never_become_zero(self):
         for payload in [{}, {'data': None}, {'error': 'limited'}, {'data': {'statistics': [{'day': '2026-11-23', 'count': -1}]}}]:

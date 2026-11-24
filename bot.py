@@ -208,7 +208,7 @@ def pet_sales_demand(record):
     cached = sales_collector.get((record or {}).get('_key'))
     metric = weekly_demand(cached or record)
     if metric['median_daily'] is None:
-        metric['reason'] = sales_collector.status
+        metric['reason'] = sales_collector.describe((record or {}).get('_key'))
     return metric
 
 # ── Conversions ───────────────────────────────────────────────────────

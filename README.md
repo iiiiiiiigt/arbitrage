@@ -52,7 +52,7 @@ one fixed proxy from your local proxy file. Install `requirements.txt`, then cre
 `{"proxy_file": "proxies.txt", "proxy_index": 1}` (index is zero-based).
 Both configuration and proxy credentials stay ignored by Git. No proxy rotation
 or automatic retry storm is used: requests remain spaced, history is cached for
-six hours, and errors pause checks for at least 15 minutes. Remove the local
+six hours, and item failures retry separately without stopping other checks. Connection failures use a short escalating cooldown; server Retry-After instructions are respected. Remove the local
 configuration to use the ordinary direct client. This only changes the Python
 history worker, not your browser connection or the GitHub Actions environment.
 A successful check is observed sales for enumerated exact-variant product IDs,
@@ -72,3 +72,11 @@ lowest listing is shown separately as an asking price.
 Check individual variants or the shortlist to queue paced price/history checks.
 Pages needs the live feed running for these buttons; otherwise it provides a
 clearly labelled saved catalog. No credentials are included in its export.
+
+
+Sales checks continue through the queue automatically. A failed item is retried
+after 60 seconds, increasing up to one hour if that item repeatedly fails.
+Network failures pause globally for 15 seconds initially, increasing up to five
+minutes; HTTP 429 starts at 60 seconds and any longer Retry-After wins. Successful
+history is retained, and a successful retry clears that item's error. Catalog
+searches allow up to 20 pages and detect pagination that makes no progress.

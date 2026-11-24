@@ -45,9 +45,10 @@ TTL = 6 * 3600
 
 
 class HistoryError(Exception):
-    def __init__(self, message, delay=900):
+    def __init__(self, message, delay=60, global_pause=False):
         super().__init__(message)
         self.delay = delay
+        self.global_pause = global_pause
 
 
 def parse_statistics(payload):
@@ -89,6 +90,10 @@ class HistoryCollector:
         self.lock = threading.Lock()
         self.started = False
         self.retry_at = 0
+        self.failures = {}
+        self.retries = {}
+        self.errors = {}
+        self.network_failures = 0
         self.status = 'Sales history has not been checked'
         self.session = history_session()
         self.session.headers.update({'Accept': 'application/json', 'Origin': 'https://starpets.gg', 'Referer': 'https://starpets.gg/'})
@@ -107,7 +112,7 @@ class HistoryCollector:
         with self.lock:
             saved = self.records.get(key, {})
             from demand import weekly_demand
-            if key in self.pending or (time.time() - saved.get('fetched_at', 0) < TTL and 'listing_low' in saved and weekly_demand(saved)['median_daily'] is not None):
+            if key in self.pending or key in self.retries or (time.time() - saved.get('fetched_at', 0) < TTL and 'listing_low' in saved and weekly_demand(saved)['median_daily'] is not None):
                 return
             try:
                 self.queue.put_nowait((key, dict(record)))
@@ -125,20 +130,29 @@ class HistoryCollector:
         try:
             response = self.session.request(method, BASE + path, timeout=(6, 12), **kwargs)
             if response.status_code != 200:
-                try:
-                    delay = max(900, float(response.headers.get('Retry-After', 900)))
-                except ValueError:
-                    delay = 900
-                raise HistoryError(f'StarPets HTTP {response.status_code}; sales check paused', delay)
+                global_pause = response.status_code in (429, 503) or response.status_code >= 500
+                delay = 60 if response.status_code == 429 else 15
+                retry_after = response.headers.get('Retry-After')
+                if retry_after:
+                    try:
+                        delay = max(delay, float(retry_after))
+                    except ValueError:
+                        from email.utils import parsedate_to_datetime
+                        try:
+                            delay = max(delay, parsedate_to_datetime(retry_after).timestamp() - time.time())
+                        except (ValueError, TypeError, OverflowError):
+                            pass
+                raise HistoryError(f'StarPets HTTP {response.status_code}', delay, global_pause)
             return response.json()
         except HistoryError:
             raise
         except Exception as exc:
-            raise HistoryError(f'StarPets unavailable ({type(exc).__name__})') from exc
+            raise HistoryError(f'StarPets unavailable ({type(exc).__name__})', 15, True) from exc
 
     def fetch(self, key, record):
         products = {}
-        for page in range(1, 5):
+        for page in range(1, 21):
+            previous_count = len(products)
             payload = self.request('POST', '/api/store/items/all', json={
                 'currency': 'usd', 'page': page, 'amount': 72,
                 'filter': {'name': record['name'], 'types': [{'type': record.get('type', 'pet')}]},
@@ -149,6 +163,8 @@ class HistoryCollector:
                 if item.get('id') is not None:
                     products[str(item['id'])] = item
             total = payload.get('count')
+            if len(products) == previous_count and total != 0:
+                raise HistoryError('Catalog pagination made no progress; item will retry later')
             if isinstance(total, int) and len(products) >= total:
                 break
         else:
@@ -172,31 +188,65 @@ class HistoryCollector:
                 'fetched_at': time.time(), 'product_ids': ids, 'source': BASE,
                 'coverage': 'Sales reported for all currently enumerated product IDs of this exact variant; missing reported dates count as zero observed sales.'}
 
+    def describe(self, key):
+        with self.lock:
+            if key in self.errors:
+                return self.errors[key]
+            if key in self.pending:
+                return 'Sales check queued or running'
+            return 'Sales history has not been checked for this variant'
+
+    def process_one(self, key, record):
+        try:
+            self.status = 'Checking StarPets sales for ' + record['name']
+            result = self.fetch(key, record)
+            with self.lock:
+                self.records[key] = result
+                self.path.parent.mkdir(exist_ok=True)
+                temporary = self.path.with_suffix('.tmp')
+                temporary.write_text(json.dumps(self.records), encoding='utf-8')
+                temporary.replace(self.path)
+                self.failures.pop(key, None)
+                self.errors.pop(key, None)
+                self.retries.pop(key, None)
+            self.network_failures = 0
+            self.status = 'StarPets sales history checked; continuing queue'
+        except Exception as exc:
+            error = exc if isinstance(exc, HistoryError) else HistoryError('Item check failed; previous data retained')
+            count = self.failures.get(key, 0) + 1
+            delay = max(error.delay, min(3600, 60 * 2 ** min(count - 1, 6)))
+            if error.global_pause:
+                self.network_failures += 1
+                pause = max(error.delay, min(300, 15 * 2 ** min(self.network_failures - 1, 5)))
+                self.retry_at = time.time() + pause
+                self.status = f'StarPets connection cooldown: {int(pause)}s; automatically resumes'
+            else:
+                self.status = 'Skipped ' + record['name'] + '; continuing other sales checks'
+            with self.lock:
+                self.failures[key] = count
+                self.retries[key] = (record, time.time() + delay)
+                self.errors[key] = str(error) + '; automatic retry after ' + datetime.fromtimestamp(time.time() + delay, timezone.utc).strftime('%H:%M:%S UTC')
+        finally:
+            with self.lock:
+                self.pending.discard(key)
+
     def work(self):
         while True:
-            key, record = self.queue.get()
-            while time.time() < self.retry_at:
-                time.sleep(min(30, self.retry_at - time.time()))
+            if time.time() < self.retry_at:
+                time.sleep(min(1, self.retry_at - time.time()))
+                continue
+            with self.lock:
+                for key, (record, due) in list(self.retries.items()):
+                    if due <= time.time() and not self.queue.full():
+                        self.queue.put_nowait((key, record))
+                        self.pending.add(key)
+                        del self.retries[key]
             try:
-                self.status = 'Checking StarPets sales for ' + record['name']
-                result = self.fetch(key, record)
-                with self.lock:
-                    self.records[key] = result
-                    self.path.parent.mkdir(exist_ok=True)
-                    temporary = self.path.with_suffix('.tmp')
-                    temporary.write_text(json.dumps(self.records), encoding='utf-8')
-                    temporary.replace(self.path)
-                self.status = 'StarPets sales history checked'
-            except HistoryError as exc:
-                self.retry_at = time.time() + exc.delay
-                self.status = str(exc) + '; retry after ' + datetime.fromtimestamp(self.retry_at, timezone.utc).strftime('%H:%M UTC')
-            except Exception:
-                self.retry_at = time.time() + 900
-                self.status = 'Sales check failed; retained previous history; retry in 15 minutes'
-            finally:
-                with self.lock:
-                    self.pending.discard(key)
-                self.queue.task_done()
+                key, record = self.queue.get(timeout=1)
+            except queue.Empty:
+                continue
+            self.process_one(key, record)
+            self.queue.task_done()
 
 
 collector = HistoryCollector()
