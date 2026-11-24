@@ -253,7 +253,7 @@ def refresh(bot, opportunities, state):
     explore = state.get('mode') in ('all', 'preferred')
     results = bot.rank_trades(observed, state['inventory'], min_stars=1, stats=stats,
                               ignore_inventory=explore)
-    near = bot.get_near_misses(observed, state['inventory'], limit=30,
+    near = bot.get_near_misses(observed, state['inventory'], limit=len(observed),
                                ignore_inventory=explore)
 
     def assess(row, margin):
@@ -294,7 +294,8 @@ def refresh(bot, opportunities, state):
         'in_window': len(state['trades']),
         'profit_summary': _profit_summary(results),
         'expired_summary': _profit_summary(state.get('archive') or []),
-        'results': results, 'near_misses': near, 'target_trades': targets,
+        'alert_trades': results + near,
+        'results': results, 'near_misses': near[:30], 'target_trades': targets,
         'stats': stats,
         'elapsed': round(now - state['started_at'], 1) if state['started_at'] else 0,
         'rate_limited': state['rate_limited'],

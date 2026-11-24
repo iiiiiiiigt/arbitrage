@@ -4,6 +4,7 @@ let lastAnnounceCount=null,pollBusy=false;
 const openDetails=new Set();
 function fullyPriced(t){return !t.unknown?.length && !/unpriced|low-confidence/i.test(t.reason||'')}
 function screenPrices(data){
+ data.alert_trades=data.alert_trades||[...(data.results||[]),...(data.near_misses||[])];
  const excluded=new Set();
  if(data.mode==='preferred'){
   const dollars=Math.max(0,Number(localStorage.getItem('preferred_min_dollars')??10));
