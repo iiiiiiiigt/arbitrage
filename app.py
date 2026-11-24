@@ -61,6 +61,8 @@ def start_demand_refresh(interval=1800, starpets_interval=6 * 3600, startup_dela
         print("demand auto-refresh disabled", flush=True)
         return []
 
+    bot.sales_collector.start()
+
     threads = []
 
     def cheap_loop():
@@ -77,7 +79,7 @@ def start_demand_refresh(interval=1800, starpets_interval=6 * 3600, startup_dela
     t.start()
     threads.append(t)
 
-    if os.environ.get("DEMAND_STARPETS_AUTOREFRESH", "1") == "0":
+    if os.environ.get("DEMAND_STARPETS_AUTOREFRESH", "0") == "0":
         print("StarPets auto-refresh disabled", flush=True)
         return threads
 

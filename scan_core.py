@@ -78,8 +78,9 @@ def build_index(bot, observed, now=None):
         return v
 
     def liquid(name):
+        from opportunities import cash_demand_ok
         info = bot.pet_price_info(name)
-        return bool((info.get('demand_signal') or {}).get('ok'))
+        return cash_demand_ok(info)
 
     for t in observed:
         if now - t.get('_seen_at', 0) > 120:
@@ -134,7 +135,7 @@ def exit_advice_fast(bot, opportunities, row, by_slug, now=None):
     for name, quantity in Counter(basket).items():
         info = bot.pet_price_info(name)
         sig = info.get('demand_signal')
-        demand_ok = bool(sig.get('ok')) if sig else info.get('sales_per_day', 0) >= 2
+        demand_ok = opportunities.cash_demand_ok(info)
         details.append({'name': name, 'quantity': quantity,
                         'sales_per_day': info.get('sales_per_day', 0),
                         'median_daily': info.get('demand', {}).get('median_daily'),
@@ -170,7 +171,10 @@ def exit_advice_fast(bot, opportunities, row, by_slug, now=None):
                             'receive': prep['result']['receive'],
                             'extra_net': prep['extra_net'],
                             'basket_net_after': round(row['recv_usd'] + prep['extra_net'], 2),
-                            'liquid': prep['next_liquid']})
+                            'extra_pct': round(prep['extra_net'] / max(prep['result']['give_usd'], .01) * 100, 1),
+                            'liquid': prep['next_liquid'] and all(
+                                opportunities.cash_demand_ok(bot.pet_price_info(p)) for p in basket
+                                if available[bot.canonical_slug(p)] > req[bot.canonical_slug(p)])})
     options.sort(key=lambda o: (not o['liquid'], -o['extra_net']))
     best = options[0] if options else None
 
@@ -183,6 +187,9 @@ def exit_advice_fast(bot, opportunities, row, by_slug, now=None):
         decision = 'Favor selling the received pets'
         reason = ('Reported resale demand supports an exit. No qualifying follow-up '
                   'with sufficient margin and resale demand was observed.')
+    elif best:
+        decision = 'Profitable follow-up found — verify cash demand'
+        reason = 'An observed downgrade fits your received pets and adds estimated net value, but the resulting holdings lack sufficient StarPets sales evidence.'
     else:
         decision = 'Insufficient evidence — review before taking this trade'
         reason = ('Resale demand is low or missing, and no qualifying liquid follow-up '
@@ -191,12 +198,8 @@ def exit_advice_fast(bot, opportunities, row, by_slug, now=None):
             'sell_now_net': row['recv_usd'],
             'demand_passed': bool(liquid or (best and best['liquid'])),
             'received_demand': details, 'recent_wanted_offers': len(seen),
-            'next_step': best,
-            'note': ('Sellability requires a verified seven-day median of at least 2 '
-                     'sales/day for each received variant. Missing history does not '
-                     'pass this check. Requests in the last 2 minutes indicate '
-                     'interest, not completed trades. One-step estimates include a '
-                     '30% commission assumption.')}
+            'next_step': best, 'downgrade_options': options[:3],
+            'note': ('Cash exit requires a seven-day median of at least 2 observed StarPets sales/day per variant, including retained pets. AMVGG ratings indicate trading interest only. Follow-up offers are alternatives, not cumulative profits. Estimates assume a 30% commission.')}
 
 
 def refresh(bot, opportunities, state):

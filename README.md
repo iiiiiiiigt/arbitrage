@@ -27,6 +27,12 @@ GitHub Pages cannot run Flask or call the marketplaces directly because their AP
 
 ## Live data on Pages
 
+The live collector now queues targeted StarPets history checks for exact variants in observed trades. A single worker spaces requests at least two seconds apart, caches successful history for six hours, and pauses for at least 15 minutes after upstream failures (longer when Retry-After requires it). The public production API is the only source used; the alternate `.dev` host returned different IDs and empty Giant Panda history and is not treated as live data. Production access can still fail; no cached average is converted into a median.
+
+History is saved to `data/starpets_sales_history.json`. Counts represent the currently enumerated product IDs and are labeled observed sales, not exhaustive marketplace totals. Failed or malformed responses are never zero-filled. A successful response reporting no sales means zero observed sales for that product. AMVGG ratings are displayed separately as trade interest and cannot qualify a cash exit. Broad StarPets scraping is opt-in (`DEMAND_STARPETS_AUTOREFRESH=1`); targeted history checks replace it by default.
+
+Trade cards show up to three alternative observed downgrades, including extra net value, uplift percentage, resulting holdings value and source links. Quantities must fit the received basket. Cash qualification checks retained pets too. These are competing alternatives, not a sum of guaranteed profits; the offers may expire before either trade completes.
+
 Run `powershell -ExecutionPolicy Bypass -File start_live.ps1` from this folder with the official Cloudflare `cloudflared.exe` installed in `tools/`. The launcher starts a separate read-only collector on port 5051 and a temporary HTTPS tunnel. Open the printed Pages link to connect that browser. It polls the collector every two seconds; upstream rate limits and latency still apply.
 
 The local Flask dashboard does not need to be open or scanning. Inventory and focus are browser-local, independent of the Flask dashboard. Keep the collector and tunnel running and the PC awake. Quick Tunnel addresses change on restart; use the new link. Only public market research is exposed; there is no acceptance or cookie endpoint. Anyone who has the tunnel URL can read the feed. To stop, terminate only the collector/tunnel PIDs printed by the launcher.

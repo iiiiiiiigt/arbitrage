@@ -23,6 +23,7 @@ def read_feed():
         return jsonify(state)
 
 def collect():
+    bot.sales_collector.start()
     # This collector sends public market requests only, without proxy rotation.
     bot.PROXIES = []
     seen = {}
@@ -54,7 +55,8 @@ def collect():
             with lock:
                 state.update(generated_at=now, trades=rows,
                              sources={'collector': 'Running' if status==200 else 'Upstream unavailable / backing off',
-                                      'Elvebredd': opportunities.source_status})
+                                      'Elvebredd': opportunities.source_status,
+                                      'StarPets': bot.sales_collector.status})
             stop.wait(30 if status == 429 else 5 if status != 200 else 2)
         except Exception:
             with lock:

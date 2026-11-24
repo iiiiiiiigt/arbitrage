@@ -1,9 +1,16 @@
 import unittest
 from types import SimpleNamespace
 from opportunities import assess_demand
+from opportunities import cash_demand_ok
+import opportunities
+import scan_core
+import time
 
 
 class DemandQualificationTests(unittest.TestCase):
+    def test_amvgg_high_demand_is_not_cash_sales(self):
+        self.assertFalse(cash_demand_ok({'reliable':True,'demand_signal':{'source':'amvgg_rating','ok':True},'demand':{'median_daily':None}}))
+
     def assess(self, median, margin=True):
         bot = SimpleNamespace(
             canonical_slug=lambda name: name,
@@ -31,6 +38,36 @@ class DemandQualificationTests(unittest.TestCase):
 
     def test_demand_cannot_override_failed_margin(self):
         self.assertFalse(self.assess(8, margin=False)['qualified'])
+
+    def test_followup_checks_retained_pets_and_both_scanners_agree(self):
+        def info(name):
+            return {'reliable':True,'demand':{'median_daily':None if name=='B' else 8},
+                    'demand_signal':{'ok':True,'source':'amvgg_rating'}}
+        result={'trade_id':'next','give':['A'],'receive':['C'],
+                'profit_usd':4,'give_usd':10,'recv_usd':14}
+        bot=SimpleNamespace(canonical_slug=lambda n:n,pet_price_info=info,
+            AMVGG_MAP={'A':.5,'B':.1,'C':.05},
+            _safe_pet_names=lambda items:(items,True,False),
+            _evaluate_trade=lambda trade,give:(result,None))
+        row={'trade_id':'first','give':['X'],'receive':['A','B'],'recv_usd':20}
+        observed=[{'id':'next','lookingFor':['A'],'offering':['C'],'_seen_at':time.time()}]
+        slow=opportunities.exit_advice(bot,row,observed)
+        fast=scan_core.exit_advice_fast(bot,opportunities,row,scan_core.build_index(bot,observed))
+        for advice in [slow,fast]:
+            self.assertFalse(advice['demand_passed'])
+            self.assertFalse(advice['next_step']['liquid'])
+            self.assertEqual(advice['next_step']['basket_net_after'],24)
+            self.assertEqual(advice['next_step']['extra_pct'],40)
+            self.assertEqual(len(advice['downgrade_options']),1)
+
+    def test_followup_cannot_spend_unowned_quantities(self):
+        bot=SimpleNamespace(canonical_slug=lambda n:n,
+            pet_price_info=lambda n:{'reliable':True,'demand':{'median_daily':None}},
+            _safe_pet_names=lambda items:(items,True,False),
+            _evaluate_trade=lambda *args: (_ for _ in ()).throw(AssertionError('must not evaluate unaffordable trade')))
+        row={'trade_id':'first','receive':['A'],'recv_usd':10}
+        advice=opportunities.exit_advice(bot,row,[{'id':'next','lookingFor':['A','A'],'_seen_at':time.time()}])
+        self.assertIsNone(advice['next_step'])
 
 
 if __name__ == '__main__':

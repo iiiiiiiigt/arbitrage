@@ -2,6 +2,7 @@ import requests, json, re, os, time, random
 from pathlib import Path
 from urllib.parse import quote
 from demand import weekly_demand
+from sales_history import collector as sales_collector
 import demand_resolver
 
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0 Safari/537.36"
@@ -161,7 +162,7 @@ STAR_PETS_SELLER_NET = 0.70
 def pet_price_info(name):
     """Return auditable gross/net StarPets pricing for one exact variant."""
     record, _ = _lookup(name)
-    demand = weekly_demand(record) if record else weekly_demand(None)
+    demand = pet_sales_demand(record)
     signal = demand_resolver.resolve(name, record, demand)
     if not record:
         return {"priced": False, "reliable": False,
@@ -195,11 +196,20 @@ def pet_is_pricable(name):
 def with_demand(trade):
     """Attach exact-variant saved demand without interpreting failed polls as zero sales."""
     demand = {}
-    for name in set(trade.get('give', []) + trade.get('receive', [])):
+    for name in dict.fromkeys(trade.get('receive', []) + trade.get('give', [])):
         record, _ = _lookup(name)
-        metric = weekly_demand(record) if record else weekly_demand(None)
+        if record and trade.get('profit_usd', 0) > 0:
+            sales_collector.enqueue(record.get('_key'), record)
+        metric = pet_sales_demand(record)
         demand[name] = dict(metric, signal=demand_resolver.resolve(name, record, metric))
     return dict(trade, item_demand=demand)
+
+def pet_sales_demand(record):
+    cached = sales_collector.get((record or {}).get('_key'))
+    metric = weekly_demand(cached or record)
+    if metric['median_daily'] is None:
+        metric['reason'] = sales_collector.status
+    return metric
 
 # ── Conversions ───────────────────────────────────────────────────────
 def pet_to_frost(name):

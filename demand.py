@@ -6,7 +6,7 @@ import math
 def weekly_demand(record, today=None):
     unknown = {'median_daily': None, 'weekly_total': None,
                'reason': 'Verified seven-day variant sales history unavailable'}
-    if not record or record.get('demand_scope') != 'variant_daily_totals':
+    if not record or record.get('demand_scope') not in ('variant_daily_totals', 'observed_product_daily_totals'):
         return unknown
     today = today or datetime.now(timezone.utc).date()
     expected = {(today-timedelta(days=i)).isoformat() for i in range(1,8)}
@@ -27,4 +27,6 @@ def weekly_demand(record, today=None):
         return unknown
     return {'median_daily': float(median(totals.values())),
             'weekly_total': sum(totals.values()), 'reason': None,
-            'period_start': min(expected), 'period_end': max(expected)}
+            'period_start': min(expected), 'period_end': max(expected),
+            'coverage': record.get('coverage'),
+            'observed_only': record.get('demand_scope') == 'observed_product_daily_totals'}

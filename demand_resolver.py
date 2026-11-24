@@ -120,8 +120,8 @@ def resolve(name, record=None, verified_demand=None):
         median = verified_demand["median_daily"]
         level = "High" if median >= 5 else "Medium" if median >= 2 else "Low"
         return _verdict(
-            name, "variant_daily_totals", level, median >= 2,
-            f"{median:g} verified sales/day", "high",
+            name, "starpets_observed_sales" if verified_demand.get('observed_only') else "variant_daily_totals", level, median >= 2,
+            f"{median:g} " + ("observed" if verified_demand.get('observed_only') else "verified") + " sales/day", "high",
             {"median_daily": median, "weekly_total": verified_demand.get("weekly_total")})
 
     # 2. StarPets sales per listing

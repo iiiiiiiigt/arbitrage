@@ -41,7 +41,7 @@ function updateStamp(){
  el.textContent=parts.join(' · ');
 }
 
-function petSide(names,label,total,demand={}){const side=node('div');side.append(node('div','side-label',label+' · '+money(total)+' net'));for(const name of names){const row=node('div','pet-item');const img=node('img');img.src='https://amvgg.com/items/'+encodeURIComponent(name.replace(/(?:\s+(Fly|Ride|Neon|Mega))+$/i,''))+'.webp';img.alt='';img.loading='lazy';img.onerror=()=>{img.style.visibility='hidden'};const text=node('div');text.append(node('span','',name));const d=demand[name];const fmt=n=>Number(n).toLocaleString(undefined,{maximumFractionDigits:2});const known=Number.isFinite(d?.median_daily)&&Number.isFinite(d?.weekly_total);const sig=(d?.signal)||d;const caption=node('span','micro',known?'Typical sales: '+fmt(d.median_daily)+'/day · '+fmt(d.weekly_total)+' sold in 7 days':(sig&&sig.label?sig.label:'Sales history: unverified'));caption.title=known?'Exact variant: median daily sales over the last seven complete UTC days ('+d.period_start+' to '+d.period_end+'). Weekly count is the sum of those days.':((sig&&sig.source?('Source: '+sig.source+'. '+sig.label):null)||d?.reason||'Verified seven-day variant sales history unavailable');text.append(caption);row.append(img,text);side.append(row)}return side}
+function petSide(names,label,total,demand={}){const side=node('div');side.append(node('div','side-label',label+' · '+money(total)+' net'));for(const name of names){const row=node('div','pet-item');const img=node('img');img.src='https://amvgg.com/items/'+encodeURIComponent(name.replace(/(?:\s+(Fly|Ride|Neon|Mega))+$/i,''))+'.webp';img.alt='';img.loading='lazy';img.onerror=()=>{img.style.visibility='hidden'};const text=node('div');text.append(node('span','',name));const d=demand[name];const fmt=n=>Number(n).toLocaleString(undefined,{maximumFractionDigits:2});const known=Number.isFinite(d?.median_daily)&&Number.isFinite(d?.weekly_total);const sig=(d?.signal)||d;const caption=node('span','micro',known?'Observed sales: '+fmt(d.median_daily)+'/day median · '+fmt(d.weekly_total)+' in 7 days':'Cash sales: unavailable');caption.title=known?'Seven complete UTC days ('+d.period_start+' to '+d.period_end+'). '+(d.coverage||'Exact-variant daily totals.'):(d?.reason||'StarPets history unavailable');text.append(caption);if(sig?.source==='amvgg_rating')text.append(node('span','micro','Trade interest: '+sig.level+' (AMVGG; not cash sales)'));row.append(img,text);side.append(row)}return side}
 function ageLabel(sec){
  if(!Number.isFinite(sec)||sec<90)return null;
  const m=Math.floor(sec/60);
@@ -115,6 +115,10 @@ function card(t){
   if(openDetails.has(t.trade_id))details.open=true;
   details.addEventListener('toggle',()=>{if(details.open)openDetails.add(t.trade_id);else openDetails.delete(t.trade_id)});
   bottom.append(details)}
+ const followups=t.exit_advice?.downgrade_options||[];
+ if(followups.length){const panel=node('div','recommendation');panel.append(node('strong','','Next downgrades found'),node('p','micro','Alternative offers using only pets you would receive. Extra gains are estimates, not additive.'));
+  for(const f of followups){const option=node('div');option.append(node('p','',f.give.join(', ')+' → '+f.receive.join(', ')),node('p','', '+'+money(f.extra_net)+' extra ('+f.extra_pct+'%) · holdings after trade: '+money(f.basket_net_after)),node('p','micro',f.liquid?'StarPets sales check passed for resulting holdings':'Cash-sales check incomplete or below threshold'));
+   const link=node('a','outline',tradeLabel(f.trade_id));link.href=tradeUrl(f.trade_id);link.target='_blank';link.rel='noopener noreferrer';option.append(link);panel.append(option)}bottom.append(panel)}
  const actions=node('div','actions');const elveTrade=elve;
  if(elveTrade){
   const copy=node('button','outline','Copy details');

@@ -9,8 +9,9 @@ What changed vs v2
 * Listing choice is now deterministic: the cheapest listing with a real price.
   The old code took whatever came first out of a dict, which could sample a
   $500 stale listing and understate demand by ~70x.
-* --sum aggregates every listing of a variant into a true variant total, and
-  only that mode is allowed to claim demand_scope "variant_daily_totals".
+* --sum aggregates the successfully enumerated product IDs of a variant.
+  It reports observed_product_daily_totals, not exhaustive market-wide sales.
+  Any failed product request makes that variant unavailable, never zero sales.
 * The window is 30 days (the endpoint's maximum); only the most recent days
   are persisted so the catalog does not balloon.
 * The per-day average sale price was previously discarded. It is now kept as
@@ -18,8 +19,8 @@ What changed vs v2
 
 Scopes
 ------
-  variant_daily_totals      --sum, every listing summed into a zero-filled
-                            daily grid. This is what demand.py accepts.
+  observed_product_daily_totals --sum, successful product histories combined
+                            into a daily grid of observed sales.
   primary_listing_daily_sales  default, cheapest listing only, gaps preserved.
                             Honest but demand.py will report "unknown" unless
                             that listing sold every single day.
@@ -348,27 +349,30 @@ def merge_variant_stats(per_listing, days=DAYS, zero_fill=False, persist_days=PE
 
 
 async def fetch_listing_stats(client, product_id, days=DAYS, currency=CURRENCY, retries=2):
-    """Daily (day, count, price) rows for one listing. Empty list on failure."""
+    """Daily rows for one product. None means failure, [] means no reported sales."""
     url = API_STATS.format(product_id, days, currency)
     for attempt in range(retries + 1):
         try:
             r = await client.get(url)
             if r.status_code == 200:
-                data = r.json().get("data", {}).get("statistics", [])
+                from sales_history import parse_statistics
+                payload = r.json()
+                checked = parse_statistics(payload)
+                data = payload['data']['statistics']
                 rows = []
                 for x in data:
                     try:
-                        rows.append((x["day"], int(x["count"]), float(x["price"])))
+                        price = float(x['price']) if x.get('price') is not None else None
+                        rows.append((x['day'], checked[x['day']], price))
                     except (KeyError, TypeError, ValueError):
-                        continue
+                        return None
                 return rows
             if r.status_code == 429:
-                await asyncio.sleep(3 * (2 ** attempt))
-                continue
-            return []
+                return None
+            return None
         except Exception:
             await asyncio.sleep(1.0)
-    return []
+    return None
 
 
 async def build_demand(pool, groups, sum_mode, days=DAYS, limit=None, names=None):
@@ -412,15 +416,22 @@ async def build_demand(pool, groups, sum_mode, days=DAYS, limit=None, names=None
                 if not it.get("id"):
                     continue
                 rows = await fetch_listing_stats(client, it["id"], days)
+                if rows is None:
+                    break
                 per_listing.append((it["id"], rows))
         except Exception:
             replace = True
         finally:
             await pool.release(client, replace=replace)
+        if len(per_listing) != len(chosen):
+            out[key] = dict(merge_variant_stats([], days=days),
+                            demand_scope='unavailable', demand_product_ids=[], listings_enumerated=0)
+            done += 1
+            return
         out[key] = merge_variant_stats(per_listing, days=days,
                                        zero_fill=sum_mode,
                                        persist_days=PERSIST_DAYS)
-        out[key]["demand_scope"] = ("variant_daily_totals" if sum_mode
+        out[key]["demand_scope"] = ("observed_product_daily_totals" if sum_mode
                                     else "primary_listing_daily_sales")
         out[key]["demand_product_ids"] = [pid for pid, _ in per_listing]
         out[key]["listings_enumerated"] = len(per_listing)
@@ -513,7 +524,7 @@ def aggregate_catalog(items_by_id, demand, keep_prices=False):
 def parse_args(argv=None):
     p = argparse.ArgumentParser(description="StarPets catalog + demand scraper")
     p.add_argument("--sum", dest="sum_mode", action="store_true",
-                   help="sum every listing of a variant (enables variant_daily_totals)")
+                   help="sum all enumerated product histories into observed sales totals")
     p.add_argument("--days", type=int, default=DAYS, help="statistics window, max 30")
     p.add_argument("--limit", type=int, default=None, help="only the first N variants")
     p.add_argument("--names", type=str, default=None,

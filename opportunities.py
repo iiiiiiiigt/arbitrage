@@ -6,6 +6,13 @@ import requests
 _next_fetch = 0
 source_status = 'Waiting for first fetch'
 
+
+def cash_demand_ok(info):
+    """Trading popularity alone is never cash-sales evidence."""
+    median = info.get('demand', {}).get('median_daily')
+    return bool(info.get('reliable') and isinstance(median, (int, float))
+                and not isinstance(median, bool) and median >= 2)
+
 def exit_advice(bot, trade, observed, now=None):
     """One-step advice for the received basket; never assumes extra inventory."""
     now = time.time() if now is None else now
@@ -16,7 +23,7 @@ def exit_advice(bot, trade, observed, now=None):
         info = bot.pet_price_info(name)
         sig = info.get('demand_signal')
         # no signal attached (older catalog / synthetic caller): keep the old rule
-        demand_ok = bool(sig.get('ok')) if sig else info.get('sales_per_day', 0) >= 2
+        demand_ok = cash_demand_ok(info)
         details.append({'name': name, 'quantity': quantity,
                         'sales_per_day': info.get('sales_per_day', 0),
                         'median_daily': info.get('demand', {}).get('median_daily'),
@@ -47,13 +54,16 @@ def exit_advice(bot, trade, observed, now=None):
             continue
         if max(map(value, result['receive'])) >= max(map(value, give)):
             continue
-        next_liquid = all((bot.pet_price_info(p).get('demand_signal') or {}).get('ok')
-                          for p in result['receive'])
+        remaining = available - required
+        next_liquid = all(cash_demand_ok(bot.pet_price_info(p)) for p in result['receive'])
+        next_liquid = next_liquid and all(cash_demand_ok(bot.pet_price_info(p))
+            for p in basket if remaining[bot.canonical_slug(p)] > 0)
         if result['profit_usd'] < max(2, trade['recv_usd'] * .05):
             continue
         options.append({'trade_id': result['trade_id'], 'give': give,
                         'receive': result['receive'], 'extra_net': result['profit_usd'],
                         'basket_net_after': round(trade['recv_usd'] + result['profit_usd'], 2),
+                        'extra_pct': round(result['profit_usd'] / max(result['give_usd'], .01) * 100, 1),
                         'liquid': next_liquid})
     options.sort(key=lambda o: (not o['liquid'], -o['extra_net']))
     best = options[0] if options else None
@@ -63,13 +73,17 @@ def exit_advice(bot, trade, observed, now=None):
     elif liquid:
         decision = 'Favor selling the received pets'
         reason = 'Reported resale demand supports an exit. No qualifying follow-up with sufficient margin and resale demand was observed.'
+    elif best:
+        decision = 'Profitable follow-up found — verify cash demand'
+        reason = 'An observed downgrade fits your received pets and increases estimated net value, but the resulting holdings lack sufficient StarPets sales evidence.'
     else:
         decision = 'Insufficient evidence — review before taking this trade'
         reason = 'Resale demand is low or missing, and no qualifying liquid follow-up was observed. The displayed gain may be difficult to realize.'
     return {'decision': decision, 'reason': reason, 'sell_now_net': trade['recv_usd'],
             'demand_passed': bool(liquid or (best and best['liquid'])),
             'received_demand': details, 'recent_wanted_offers': len(wanted),
-            'next_step': best, 'note': 'Demand checks use verified daily sales when available, otherwise StarPets sell-through estimates or AMVGG demand ratings. AMVGG ratings indicate trading interest, not verified cash sales or sale speed. Requests in the last 2 minutes are not completed trades. Estimates assume a 30% commission.'}
+            'next_step': best, 'downgrade_options': options[:3],
+            'note': 'Cash exit requires a seven-day median of at least 2 observed StarPets sales/day per variant, including retained pets. AMVGG ratings indicate trading interest only. Follow-up offers are alternatives, not cumulative profits; availability is unconfirmed. Estimates assume a 30% commission.'}
 
 def assess_demand(bot, row, observed, margin_passed):
     """A price margin alone cannot qualify an offer as worth considering."""
