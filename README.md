@@ -21,6 +21,14 @@ GitHub Pages cannot run Flask or call the marketplaces directly because their AP
 
 ## Tests
 
+## Live data on Pages
+
+Run `powershell -ExecutionPolicy Bypass -File start_live.ps1` from this folder with the official Cloudflare `cloudflared.exe` installed in `tools/`. The launcher starts a separate read-only collector on port 5051 and a temporary HTTPS tunnel. Open the printed Pages link to connect that browser. It polls the collector every two seconds; upstream rate limits and latency still apply.
+
+The local Flask dashboard does not need to be open or scanning. Inventory and focus are browser-local, independent of the Flask dashboard. Keep the collector and tunnel running and the PC awake. Quick Tunnel addresses change on restart; use the new link. Only public market research is exposed; there is no acceptance or cookie endpoint. Anyone who has the tunnel URL can read the feed. To stop, terminate only the collector/tunnel PIDs printed by the launcher.
+
+If live data stops, Pages labels the last data offline. Use "Use snapshots" to switch back to scheduled data.
+
 ```sh
 python -m unittest test_pricing.py
 ```
