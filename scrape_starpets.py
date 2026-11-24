@@ -1,5 +1,5 @@
-"""
-scrape_starpets_v3.py — demand with honest per-variant aggregation.
+﻿"""
+scrape_starpets_v3.py â€” demand with honest per-variant aggregation.
 
 What changed vs v2
 ------------------
@@ -128,7 +128,7 @@ def _build_filter(price_min=None, price_max=None):
     return f
 
 
-# ── Client pool ───────────────────────────────────────────────────────
+# â”€â”€ Client pool â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 class DemandClientPool:
     def __init__(self, proxies, size=50):
         self.proxies = proxies
@@ -138,7 +138,7 @@ class DemandClientPool:
 
     def _make_client(self):
         proxy = random.choice(self.proxies) if self.proxies else None
-        return httpx.AsyncClient(proxy=proxy, timeout=10, headers=HEADERS, verify=False)
+        return httpx.AsyncClient(proxy=proxy, timeout=10, headers=HEADERS, verify=True)
 
     async def acquire(self):
         return await self.pool.get()
@@ -161,7 +161,7 @@ class DemandClientPool:
                 pass
 
 
-# ── Pricing crawl (unchanged behaviour) ───────────────────────────────
+# â”€â”€ Pricing crawl (unchanged behaviour) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 async def fetch_price_page(proxies, page, price_min=None, price_max=None, stats=None):
     for _ in range(3):
         proxy = random.choice(proxies) if proxies else None
@@ -170,7 +170,7 @@ async def fetch_price_page(proxies, page, price_min=None, price_max=None, stats=
             "filter": _build_filter(price_min, price_max), "sort": {"price": "asc"},
         }
         try:
-            async with httpx.AsyncClient(proxy=proxy, timeout=PAGE_TIMEOUT, headers=HEADERS, verify=False) as c:
+            async with httpx.AsyncClient(proxy=proxy, timeout=PAGE_TIMEOUT, headers=HEADERS, verify=True) as c:
                 r = await c.post(API_PRICES, json=payload)
             if r.status_code == 200:
                 data = r.json()
@@ -226,7 +226,7 @@ async def crawl_prices(proxies, stats):
     max_p = 999999.0
     try:
         async with httpx.AsyncClient(proxy=random.choice(proxies) if proxies else None,
-                                     timeout=20, headers=HEADERS, verify=False) as c:
+                                     timeout=20, headers=HEADERS, verify=True) as c:
             r = await c.post(API_PRICES, json={"currency": CURRENCY, "page": 1, "amount": 1,
                                                "filter": _build_filter(),
                                                "sort": {"price": "desc"}})
@@ -252,7 +252,7 @@ async def crawl_prices(proxies, stats):
     return all_items
 
 
-# ── Demand ────────────────────────────────────────────────────────────
+# â”€â”€ Demand â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 def _variant_key(it):
     rn = _slugify(it.get("realName") or "")
     if not rn:
@@ -449,7 +449,7 @@ async def build_demand(pool, groups, sum_mode, days=DAYS, limit=None, names=None
     return out
 
 
-# ── Catalog ───────────────────────────────────────────────────────────
+# â”€â”€ Catalog â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 def _slugify(s):
     return re.sub(r"[^a-z0-9]+", "_", s.lower()).strip("_")
 
@@ -520,7 +520,7 @@ def aggregate_catalog(items_by_id, demand, keep_prices=False):
     return catalog
 
 
-# ── Main ──────────────────────────────────────────────────────────────
+# â”€â”€ Main â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 def parse_args(argv=None):
     p = argparse.ArgumentParser(description="StarPets catalog + demand scraper")
     p.add_argument("--sum", dest="sum_mode", action="store_true",
