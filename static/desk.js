@@ -1,4 +1,7 @@
 let state=null,tab='good',stopped=false,researchRows=[];
+let lastSig='',lastUpdate=0,lastChange=0,nextAt=0,pollTimer=null,lastResearchSig='';
+let lastAnnounceCount=null;
+const openDetails=new Set();
 function fullyPriced(t){return !t.unknown?.length && !/unpriced|low-confidence/i.test(t.reason||'')}
 function screenPrices(data){
  const excluded=new Set();
@@ -13,23 +16,207 @@ function screenPrices(data){
 const $=id=>document.getElementById(id);
 function node(tag,cls,text){const el=document.createElement(tag);if(cls)el.className=cls;if(text!==undefined)el.textContent=text;return el}
 const money=n=>n==null?'Unknown':'$'+Number(n).toFixed(2);
-function petSide(names,label,total,demand={}){const side=node('div');side.append(node('div','side-label',label+' · '+money(total)+' net'));for(const name of names){const row=node('div','pet-item');const img=node('img');img.src='https://amvgg.com/items/'+encodeURIComponent(name.replace(/(?:\s+(Fly|Ride|Neon|Mega))+$/i,''))+'.webp';img.alt='';img.loading='lazy';img.onerror=()=>{img.style.visibility='hidden'};const text=node('div');text.append(node('span','',name));const d=demand[name];const fmt=n=>Number(n).toLocaleString(undefined,{maximumFractionDigits:2});const known=Number.isFinite(d?.median_daily)&&Number.isFinite(d?.weekly_total);const caption=node('span','micro',known?'Typical sales: '+fmt(d.median_daily)+'/day · '+fmt(d.weekly_total)+' sold in 7 days':'Sales history: unverified');caption.title=known?'Exact variant: median daily sales over the last seven complete UTC days ('+d.period_start+' to '+d.period_end+'). Weekly count is the sum of those days.':(d?.reason||'Verified seven-day variant sales history unavailable');text.append(caption);row.append(img,text);side.append(row)}return side}
+
+// ── Cadence indicator ────────────────────────────────────────────────
+// The feed used to be rebuilt every 2s whether or not anything changed,
+// which looked like random refreshing. Now we only touch the DOM when the
+// visible content actually differs, and we say when the next check is due.
+function ago(ts){
+ const s=Math.max(0,Math.round((Date.now()-ts)/1000));
+ if(s<60)return s+'s';
+ const m=Math.floor(s/60);
+ if(m<60)return m+'m '+(s%60)+'s';
+ return Math.floor(m/60)+'h '+(m%60)+'m';
+}
+function updateStamp(){
+ const el=$('updated');if(!el)return;
+ const parts=[];
+ if(!lastUpdate)parts.push('Waiting for first update');
+ else parts.push('Checked '+(Date.now()-lastUpdate<1500?'just now':ago(lastUpdate)+' ago'));
+ if(lastChange)parts.push('last change '+ago(lastChange)+' ago');
+ else parts.push('no changes yet');
+ if(stopped)parts.push('auto-refresh off');
+ else if(document.hidden)parts.push('paused (tab hidden)');
+ else{const wait=Math.ceil((nextAt-Date.now())/1000);parts.push(wait>0?'next in '+wait+'s':'checking…')}
+ el.textContent=parts.join(' · ');
+}
+
+function petSide(names,label,total,demand={}){const side=node('div');side.append(node('div','side-label',label+' · '+money(total)+' net'));for(const name of names){const row=node('div','pet-item');const img=node('img');img.src='https://amvgg.com/items/'+encodeURIComponent(name.replace(/(?:\s+(Fly|Ride|Neon|Mega))+$/i,''))+'.webp';img.alt='';img.loading='lazy';img.onerror=()=>{img.style.visibility='hidden'};const text=node('div');text.append(node('span','',name));const d=demand[name];const fmt=n=>Number(n).toLocaleString(undefined,{maximumFractionDigits:2});const known=Number.isFinite(d?.median_daily)&&Number.isFinite(d?.weekly_total);const sig=(d?.signal)||d;const caption=node('span','micro',known?'Typical sales: '+fmt(d.median_daily)+'/day · '+fmt(d.weekly_total)+' sold in 7 days':(sig&&sig.label?sig.label:'Sales history: unverified'));caption.title=known?'Exact variant: median daily sales over the last seven complete UTC days ('+d.period_start+' to '+d.period_end+'). Weekly count is the sum of those days.':((sig&&sig.source?('Source: '+sig.source+'. '+sig.label):null)||d?.reason||'Verified seven-day variant sales history unavailable');text.append(caption);row.append(img,text);side.append(row)}return side}
+function ageLabel(sec){
+ if(!Number.isFinite(sec)||sec<90)return null;
+ const m=Math.floor(sec/60);
+ return m<60?m+'m ago':Math.floor(m/60)+'h ago';
+}
+// amvgg supports a real per-trade URL; elvebredd does not (verified: no route,
+// no query param, its UI scrolls via sessionStorage).
+function tradeUrl(id){return String(id).startsWith('elvebredd:')?'https://elvebredd.com/trade-center':'https://amvgg.com/trade/'+encodeURIComponent(id)}
+function tradeLabel(id){return String(id).startsWith('elvebredd:')?'Open trade center':'Open trade'}
+function shortId(id){return String(id).replace(/^elvebredd:/,'')}
+// Elvebredd has no per-listing URL, so the next best thing is a pasteable
+// summary: the listing id plus both sides of the offer.
+function copyTradeText(t){
+ const id=shortId(t.trade_id);
+ const txt='Adopt Me trade #'+id+': give '+(t.give||[]).join(', ')+
+   ' for '+(t.receive||[]).join(', ')+' (elvebredd listing '+id+')';
+ if(navigator.clipboard&&navigator.clipboard.writeText){
+  return navigator.clipboard.writeText(txt).then(()=>true,()=>false);
+ }
+ return Promise.resolve(false);
+}
+
+function expiredCard(e){
+ const elve=String(e.trade_id).startsWith('elvebredd:');
+ const card=node('article','deal expired');
+ const head=node('div','deal-head');
+ head.append(node('span','pill','Expired'),node('span','',elve?'Elvebredd':'AMVGG'),node('span','author','@'+(e.author||'?')));
+ if(elve)head.append(node('span','micro','#'+shortId(e.trade_id)));
+ card.append(head);
+ const dm={};for(const [n,v] of Object.entries(e.demand||{}))dm[n]={median_daily:v.median_daily,signal:{label:v.label}};
+ const ex=node('div','exchange');
+ ex.append(petSide(e.give||[],'GAVE',e.give_usd,dm),node('div','exchange-arrow','→'),petSide(e.receive||[],'GOT',e.recv_usd,dm));
+ card.append(ex);
+ const bottom=node('div','deal-bottom');const nums=node('div','numbers');
+ const gain=node('div');gain.append(node('span','micro','ESTIMATED NET CHANGE'),
+  node('div','gain'+((e.profit_usd||0)<0?' loss':''),((e.profit_usd||0)>0?'+':'')+money(e.profit_usd)));
+ nums.append(gain);
+ const frost=node('div','frost');frost.append(node('span','micro','FROST VALUE · GAVE → GOT'),
+  node('span','',(e.give_frost??'?')+' → '+(e.recv_frost??'?')));nums.append(frost);
+ bottom.append(nums);
+ const adv=e.exit_advice||{};
+ if(adv.decision)bottom.append(node('p','muted',adv.decision));
+ if(e.reason)bottom.append(node('p','muted',String(e.reason)));
+ bottom.append(node('p','muted','Left the live window '+ago(Date.now()-(e.expired_at||0)*1000)+' ago. The offer may already be gone.'));
+ const actions=node('div','actions');
+ if(elve){
+  const copy=node('button','outline','Copy details');
+  copy.onclick=async()=>{const ok=await copyTradeText(e);copy.textContent=ok?'Copied':'Copy failed';setTimeout(()=>{copy.textContent='Copy details'},2000)};
+  actions.append(copy);
+ }
+ const link=node('a','primary',tradeLabel(e.trade_id));link.href=tradeUrl(e.trade_id);
+ if(elve)link.title='Elvebredd has no per-listing URL; opens the trade center.';
+ link.target='_blank';link.rel='noopener noreferrer';actions.append(link);
+ bottom.append(actions);card.append(bottom);return card;
+}
 function card(t){
  const incomplete=Boolean(t.unknown?.length)||/unpriced|low-confidence/i.test(t.reason||'');
  const elve=String(t.trade_id).startsWith('elvebredd:');const card=node('article','deal');const head=node('div','deal-head');
- head.append(node('span','pill'+(t.reason?' review':''),incomplete?'Price incomplete':t.reason?'Review carefully':'Potential opportunity'),node('span','',elve?'Elvebredd':'AMVGG'),node('span','author','@'+t.author));card.append(head);
+ head.append(node('span','pill'+(t.reason?' review':''),incomplete?'Price incomplete':t.reason?'Review carefully':'Potential opportunity'),node('span','',elve?'Elvebredd':'AMVGG'),node('span','author','@'+t.author));
+ if(elve)head.append(node('span','micro','#'+shortId(t.trade_id)));card.append(head);
+ // an expired window entry can linger; say so rather than implying it is live
+ const stale=ageLabel(t.seen_age);
+ if(stale)head.append(node('span','pill','last seen '+stale));
  const exchange=node('div','exchange');exchange.append(petSide(t.give,'YOU GIVE',incomplete?null:t.give_usd,t.item_demand),node('div','exchange-arrow','→'),petSide(t.receive,'YOU RECEIVE',incomplete?null:t.recv_usd,t.item_demand));card.append(exchange);
  const bottom=node('div','deal-bottom');const nums=node('div','numbers');const gain=node('div');gain.append(node('span','micro','ESTIMATED NET CHANGE'),node('div','gain'+(incomplete?' unknown':t.profit_usd<0?' loss':''),incomplete?'Profit unknown':(t.profit_usd>0?'+':'')+money(t.profit_usd)));nums.append(gain);
  const frost=node('div','frost');frost.append(node('span','micro','FROST VALUE · GIVE → RECEIVE'),node('span','',t.give_frost+' → '+t.recv_frost+'  ('+((t.recv_frost-t.give_frost)>=0?'+':'')+(t.recv_frost-t.give_frost).toFixed(4)+')'));nums.append(frost);bottom.append(nums);
  if(t.reason){bottom.append(node('p','muted',incomplete?'Some items lack reliable prices. The total profit cannot be determined.':t.reason.replace('no USD profit','Estimated loss')))}
- const a=t.exit_advice;if(a){const advice=node('div','recommendation');advice.append(node('strong','',a.decision),node('p','',a.reason));bottom.append(advice);const details=node('details','detail-toggle');details.append(node('summary','','Why this recommendation?'));for(const d of a.received_demand)details.append(node('p','',d.quantity+' × '+d.name+': '+(Number.isFinite(d.median_daily)?d.median_daily+' sales/day (7-day median)':'verified sales history unavailable')));if(a.next_step)details.append(node('p','','Possible next trade: '+a.next_step.give.join(', ')+' → '+a.next_step.receive.join(', ')+' · extra '+money(a.next_step.extra_net)));details.append(node('p','',a.note));bottom.append(details)}
- const actions=node('div','actions');const view=node('a','primary',elve?'View on Elvebredd':'View trade');view.href=elve?'https://elvebredd.com/trade-center':'https://amvgg.com/trade/'+encodeURIComponent(t.trade_id);view.target='_blank';view.rel='noopener noreferrer';actions.append(view);
- const accept=node('button','outline',elve?'Accept on Elvebredd':'Accept trade');accept.onclick=async()=>{if(elve){window.open(view.href,'_blank','noopener');return}if(!confirm('Accept on AMVGG?\nGive: '+t.give.join(', ')+'\nReceive: '+t.receive.join(', ')+(t.reason?'\nReview: '+t.reason:'')))return;accept.disabled=true;accept.textContent='Accepting…';try{const r=await fetch('/accept',{method:'POST',body:new URLSearchParams({trade_id:t.trade_id})});const d=await r.json();if(!r.ok||!d.success)throw Error();accept.textContent='Accepted — verify completion'}catch{accept.textContent='Unconfirmed — check source';accept.disabled=false}};actions.append(accept);bottom.append(actions);card.append(bottom);return card;
+ const a=t.exit_advice;if(a){const advice=node('div','recommendation');advice.append(node('strong','',a.decision),node('p','',a.reason));bottom.append(advice);const details=node('details','detail-toggle');details.append(node('summary','','Why this recommendation?'));for(const d of a.received_demand)details.append(node('p','',d.quantity+' × '+d.name+': '+(Number.isFinite(d.median_daily)?d.median_daily+' sales/day (7-day median)':(d.demand_label||'verified sales history unavailable'))));if(a.next_step)details.append(node('p','','Possible next trade: '+a.next_step.give.join(', ')+' → '+a.next_step.receive.join(', ')+' · extra '+money(a.next_step.extra_net)));details.append(node('p','',a.note));
+  // keep this panel open across re-renders instead of collapsing it
+  details.dataset.tid=t.trade_id;
+  if(openDetails.has(t.trade_id))details.open=true;
+  details.addEventListener('toggle',()=>{if(details.open)openDetails.add(t.trade_id);else openDetails.delete(t.trade_id)});
+  bottom.append(details)}
+ const actions=node('div','actions');const elveTrade=elve;
+ if(elveTrade){
+  const copy=node('button','outline','Copy details');
+  copy.onclick=async()=>{const ok=await copyTradeText(t);copy.textContent=ok?'Copied':'Copy failed';setTimeout(()=>{copy.textContent='Copy details'},2000)};
+  actions.append(copy);
+ }
+ const view=node('a','primary',tradeLabel(t.trade_id));view.href=tradeUrl(t.trade_id);
+ if(elveTrade)view.title='Elvebredd has no per-listing URL; opens the trade center where you can search for it.';
+ view.target='_blank';view.rel='noopener noreferrer';actions.append(view);
+ const accept=node('button','outline',elveTrade?'Open trade center':'Accept trade');accept.onclick=async()=>{if(elveTrade){window.open(view.href,'_blank','noopener');return}if(!confirm('Accept on AMVGG?\nGive: '+t.give.join(', ')+'\nReceive: '+t.receive.join(', ')+(t.reason?'\nReview: '+t.reason:'')))return;accept.disabled=true;accept.textContent='Accepting…';try{const r=await fetch('/accept',{method:'POST',body:new URLSearchParams({trade_id:t.trade_id})});const d=await r.json();if(!r.ok||!d.success)throw Error();accept.textContent='Accepted — verify completion'}catch{accept.textContent='Unconfirmed — check source';accept.disabled=false}};actions.append(accept);bottom.append(actions);card.append(bottom);return card;
 }
-function render(){if(!state)return;$('scanned').textContent=state.trade_count;$('good-count').textContent=state.results.length;$('review-count').textContent=state.near_misses.length;$('connection').textContent=state.rate_limited?'Rate limited · slowing down':state.running?'● Scanning both markets':'Scanning stopped';const list=tab==='good'?state.results:tab==='review'?state.near_misses:state.target_trades;$('feed').replaceChildren();if(!list.length){const empty=node('div','empty');empty.append(node('h2','',tab==='focus'&&!state.target_pet?'Choose a focus pet above':'No matching offers yet'),node('p','',tab==='good'?'The scanner is looking for trades that clear your price and margin checks.':'Try another tab or keep scanning.'));$('feed').append(empty)}else list.forEach(t=>$('feed').append(card(t)))}
-document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{tab=b.dataset.tab;document.querySelectorAll('[data-tab]').forEach(x=>x.classList.toggle('active',x===b));render()});
-$('pause').onclick=async()=>{try{const r=await fetch('/stop',{method:'POST'});if(!r.ok)throw Error();stopped=true;$('pause').disabled=true;$('pause').textContent='Stopped';if(state){state.running=false;render()}}catch{$('connection').textContent='Could not stop. Retry.'}};
-async function poll(){try{const r=await fetch('/status');if(!r.ok)throw Error();state=screenPrices(await r.json());render()}catch{$('connection').textContent='Connection lost · retrying'}if(!stopped)setTimeout(poll,2000)}poll();
+
+const BEST_MIN=10;
+function bestFloor(){return Number((state.profit_summary||{}).threshold)||BEST_MIN}
+function visibleList(){
+ if(tab==='expired')return state.expired||[];
+ if(tab==='best')return (state.results||[]).filter(t=>(t.profit_usd||0)>=bestFloor())
+   .sort((a,b)=>(b.profit_usd||0)-(a.profit_usd||0));
+ return tab==='good'?state.results:tab==='review'?state.near_misses:state.target_trades;
+}
+function sigOf(list){
+ return [tab,state.trade_count,state.running,state.rate_limited,state.target_pet,
+  state.results.length,state.near_misses.length,state.target_trades.length,
+  (state.expired||[]).length,(state.profit_summary||{}).total||0,
+  list.map(t=>t.trade_id+'~'+(t.profit_usd||0)+'~'+(t.stars||0)+'~'+(t.reason||'')).join(';')
+ ].join('|');
+}
+function render(force){
+ if(!state)return;
+ // "Offers scanned" is cumulative and must never fall; the window size is a
+ // separate figure because the working set legitimately expires.
+ const scanned = state.total_scanned ?? state.trade_count;
+ $('scanned').textContent = scanned;
+ $('scanned').title = scanned + ' offers ingested this scan; ' +
+   (state.in_window ?? state.trade_count) + ' currently live in the window';
+ if($('live-window')) $('live-window').textContent = state.in_window ?? state.trade_count;
+ const ps=state.profit_summary||{};
+ if($('total-profit')){
+  const t=Number(ps.total||0);
+  $('total-profit').textContent='$'+t.toFixed(2);
+  $('total-profit').title=(ps.count||0)+' trade(s) worth at least $'+(ps.threshold??BEST_MIN)+
+    ' each (best $'+Number(ps.best||0).toFixed(2)+'). Trades below the floor are not counted.';
+ }
+ $('good-count').textContent=state.results.length;$('review-count').textContent=state.near_misses.length;
+ $('connection').textContent=state.rate_limited?'Rate limited · slowing down':state.running?'● Scanning both markets':'Scanning stopped';
+ const list=visibleList();
+ const sig=sigOf(list);
+ if(!force&&sig===lastSig){updateStamp();return}   // nothing changed: leave the DOM alone
+ lastSig=sig;
+ lastChange=Date.now();
+ // announce only genuine growth, instead of re-announcing the whole feed
+ const ann=$('feed-announce');
+ if(ann){
+  const n=list.length;
+  if(lastAnnounceCount!==null&&n>lastAnnounceCount){
+   const added=n-lastAnnounceCount;
+   ann.textContent=added+' new offer'+(added===1?'':'s')+' in '+tab;
+  }
+  lastAnnounceCount=n;
+ }
+ $('feed').replaceChildren();
+ if(tab==='expired'){
+  const es=state.expired_summary||{};
+  $('feed').append(node('p','muted','Expired: '+(es.count||0)+' trade(s) at $'+
+   (es.threshold??BEST_MIN)+'+ worth $'+Number(es.total||0).toFixed(2)+' total'+
+   (es.best?' (best $'+Number(es.best).toFixed(2)+')':'')+'.'));
+ }
+ if(!list.length){const empty=node('div','empty');empty.append(node('h2','',tab==='focus'&&!state.target_pet?'Choose a focus pet above':tab==='expired'?'Nothing has expired yet':tab==='best'?'No trades at $'+bestFloor()+'+ yet':'No matching offers yet'),node('p','',tab==='expired'?'Trades that leave the live window and were worth a look land here, with their links intact.':tab==='best'?'Only offers worth at least $'+bestFloor()+' each appear here, sorted by profit.':'Try another tab or keep scanning.'));$('feed').append(empty)}else list.forEach(t=>$('feed').append(tab==='expired'?expiredCard(t):card(t)));
+ updateStamp();
+}
+
+document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{tab=b.dataset.tab;document.querySelectorAll('[data-tab]').forEach(x=>x.classList.toggle('active',x===b));render(true)});
+$('pause').onclick=async()=>{try{const r=await fetch('/stop',{method:'POST'});if(!r.ok)throw Error();stopped=true;clearTimeout(pollTimer);$('pause').disabled=true;$('pause').textContent='Stopped';if(state){state.running=false;render(true)}updateStamp()}catch{$('connection').textContent='Could not stop. Retry.'}};
+if($('refresh'))$('refresh').onclick=()=>{pollNow()};
+
+function schedule(ms){clearTimeout(pollTimer);nextAt=Date.now()+ms;pollTimer=setTimeout(poll,ms);updateStamp()}
+async function poll(){
+ if(stopped)return;
+ if(document.hidden){schedule(2000);return}      // don't poll a tab nobody is looking at
+ try{const r=await fetch('/status');if(!r.ok)throw Error();state=screenPrices(await r.json());lastUpdate=Date.now();render()}
+ catch{$('connection').textContent='Connection lost · retrying'}
+ if(!stopped)schedule(2000);else updateStamp();
+}
+function pollNow(){clearTimeout(pollTimer);poll()}
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&!stopped)pollNow();else updateStamp()});
+setInterval(updateStamp,1000);
+poll();
+
 function researchTable(){const table=node('table');const header=node('tr');['Pet variant','Net resale','Potential uplift','Reported sales/day',''].forEach(s=>header.append(node('th','',s)));table.append(header);const q=$('research-filter').value.toLowerCase();researchRows.filter(r=>r.name.toLowerCase().includes(q)).forEach(r=>{const row=node('tr');[r.name,money(r.net),r.uplift_pct+'%',r.sales_per_day||'Unknown'].forEach(v=>row.append(node('td','',String(v))));const cell=node('td');const b=node('button','outline','Explore next');b.onclick=()=>{$('research-base').value=r.name;research()};cell.append(b);row.append(cell);table.append(row)});$('research-list').replaceChildren(table)}
-async function research(){const base=$('research-base').value.trim();if(!base){$('research-note').textContent='Select a focus pet or enter an exact variant first.';return}$('research-go').disabled=true;try{const r=await fetch('/research?'+new URLSearchParams({baseline:base}));if(!r.ok)throw Error();const d=await r.json();researchRows=d.candidates;$('research-note').textContent=researchRows.length+' smaller candidates. These are theoretical comparisons; an available trade is required.';researchTable()}catch{$('research-note').textContent='Research unavailable. Please retry.'}finally{$('research-go').disabled=false}}
+async function research(){
+ const base=$('research-base').value.trim();
+ if(!base){$('research-note').textContent='Select a focus pet or enter an exact variant first.';return}
+ $('research-go').disabled=true;
+ try{
+  const r=await fetch('/research?'+new URLSearchParams({baseline:base}));
+  if(!r.ok)throw Error();
+  const d=await r.json();
+  researchRows=d.candidates;
+  $('research-note').textContent=researchRows.length+' smaller candidates. These are theoretical comparisons; an available trade is required.';
+  const sig=researchRows.map(c=>c.name+'~'+c.net).join(';');
+  if(sig!==lastResearchSig){lastResearchSig=sig;researchTable()}   // avoid pointless table rebuilds
+ }catch{$('research-note').textContent='Research unavailable. Please retry.'}
+ finally{$('research-go').disabled=false}
+}
 $('research-go').onclick=research;$('research-filter').oninput=researchTable;window.addEventListener('downgrade-focus',e=>{$('research-base').value=e.detail;if(e.detail)research()});

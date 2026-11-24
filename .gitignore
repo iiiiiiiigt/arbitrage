@@ -9,3 +9,6 @@ venv/
 *.log
 .live/
 tools/
+elvebredd_cookies.json
+*.bak
+_backup_*

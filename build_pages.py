@@ -13,6 +13,14 @@ import opportunities
 OUT = Path(__file__).resolve().parent / 'docs'
 
 def build():
+    # Keep the amvgg rating table current. TTL-gated (default 12h) and never
+    # fatal: a stale file beats a broken build.
+    try:
+        import demand_refresh
+        demand_refresh.refresh_amvgg()
+    except Exception as exc:
+        print(f"demand refresh skipped: {type(exc).__name__}: {exc}")
+
     OUT.mkdir(exist_ok=True)
     shutil.copytree(bot.BASE_DIR / 'static', OUT / 'static', dirs_exist_ok=True)
     css = OUT / 'static' / 'desk.css'
@@ -24,7 +32,12 @@ def build():
     for p in bot.AMVGG_PETS:
         info = bot.pet_price_info(p['name'])
         if info.get('reliable') and p['value'] > 0:
-            catalog.append(dict(name=p['name'], frost=p['value'], **info))
+            # sales_per_day is what the UI reads; the nested per-trade blocks
+            # are only used server-side, so they are dropped to keep the
+            # published catalog small.
+            entry = {k: v for k, v in info.items()
+                     if k not in ('demand', 'demand_signal')}
+            catalog.append(dict(name=p['name'], frost=p['value'], **entry))
     trades = []; sources = {}
     try:
         r = requests.get('https://amvgg.com/api/trades?limit=20', timeout=20)
@@ -50,9 +63,14 @@ def build():
                 continue
             row = near[0]; row['qualified'] = False
         rows.append(opportunities.assess_demand(bot, row, trades, row['qualified']))
-    data = {'generated_at': time.time(), 'sources': sources,
-            'pets': grouped, 'catalog': catalog, 'trades': rows}
-    (OUT / 'snapshot.json').write_text(json.dumps(data, ensure_ascii=True), encoding='utf-8')
+    # Split by change frequency. The catalog is 86% of the old payload but only
+    # changes when the scraper is re-run; trades are small and change every
+    # build. Sending one bundle meant re-downloading ~2.1 MB to get ~60 KB.
+    trades_blob = {'generated_at': time.time(), 'sources': sources, 'trades': rows}
+    (OUT / 'trades.json').write_text(json.dumps(trades_blob, ensure_ascii=True), encoding='utf-8')
+    (OUT / 'pets.json').write_text(json.dumps(grouped, ensure_ascii=True), encoding='utf-8')
+    (OUT / 'catalog.json').write_text(json.dumps(catalog, ensure_ascii=True), encoding='utf-8')
+    (OUT / 'snapshot.json').unlink(missing_ok=True)
     with app.app.test_request_context():
         for template, name in [('index.html', 'index.html'), ('results_clean.html', 'dashboard.html')]:
             html = app.render_template(template, pets=grouped, target='', inventory=[])

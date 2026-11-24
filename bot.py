@@ -1,6 +1,8 @@
 import requests, json, re, os, time, random
 from pathlib import Path
+from urllib.parse import quote
 from demand import weekly_demand
+import demand_resolver
 
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0 Safari/537.36"
 BASE_DIR = Path(__file__).resolve().parent
@@ -39,6 +41,11 @@ CATALOG = {}
 if CATALOG_PATH.exists():
     with CATALOG_PATH.open() as f:
         CATALOG = json.load(f)
+    # keep the variant identity on the record so demand_resolver can look up the
+    # StarPets rating without re-deriving the key
+    for _k, _v in CATALOG.items():
+        if isinstance(_v, dict):
+            _v["_key"] = _k
 
 # ── Slug & Variant Helpers ────────────────────────────────────────────
 def to_slug(s):
@@ -84,21 +91,41 @@ SLUG_ALIASES = {
     'fly_a_pet_potion_forever': 'pet_flying_potion',
 }
 
-_PRICEABLE_BASES = {k.split("|", 1)[0] for k in CATALOG}
-_DISPLAY_TO_BASES = {}
-for key, record in CATALOG.items():
-    # Include potions, petwear, vehicles and toys, but never ambiguous names.
-    displayed = to_slug(record.get("name") or "")
-    if displayed:
-        _DISPLAY_TO_BASES.setdefault(displayed, set()).add(key.split("|", 1)[0])
+def _build_catalog_indexes(catalog):
+    """(Re)build the display-name -> StarPets identity maps for a catalog."""
+    global _PRICEABLE_BASES, _DISPLAY_TO_BASE
+    _PRICEABLE_BASES = {k.split("|", 1)[0] for k in catalog}
+    display_to_bases = {}
+    for key, record in catalog.items():
+        # Include potions, petwear, vehicles and toys, but never ambiguous names.
+        displayed = to_slug(record.get("name") or "")
+        if displayed:
+            display_to_bases.setdefault(displayed, set()).add(key.split("|", 1)[0])
 
-# An AMVGG display name is allowed to map only when StarPets has exactly one
-# internal pet identity for it. Ambiguity becomes "unpriced", never a guess.
-_DISPLAY_TO_BASE = {
-    displayed: next(iter(bases))
-    for displayed, bases in _DISPLAY_TO_BASES.items()
-    if len(bases) == 1
-}
+    # An AMVGG display name is allowed to map only when StarPets has exactly one
+    # internal pet identity for it. Ambiguity becomes "unpriced", never a guess.
+    _DISPLAY_TO_BASE = {
+        displayed: next(iter(bases))
+        for displayed, bases in display_to_bases.items()
+        if len(bases) == 1
+    }
+
+
+def reload_catalog(path=None):
+    """Re-read the StarPets catalog after a refresh so live requests use it."""
+    global CATALOG, CATALOG_PATH
+    target = Path(path) if path else CATALOG_PATH
+    with target.open() as f:
+        catalog = json.load(f)
+    for k, v in catalog.items():
+        if isinstance(v, dict):
+            v["_key"] = k
+    CATALOG = catalog
+    _build_catalog_indexes(CATALOG)
+    return len(CATALOG)
+
+
+_build_catalog_indexes(CATALOG)
 
 def _resolve_catalog_base(base):
     """Resolve one deterministic StarPets pet identity without fuzzy matching."""
@@ -134,9 +161,12 @@ STAR_PETS_SELLER_NET = 0.70
 def pet_price_info(name):
     """Return auditable gross/net StarPets pricing for one exact variant."""
     record, _ = _lookup(name)
+    demand = weekly_demand(record) if record else weekly_demand(None)
+    signal = demand_resolver.resolve(name, record, demand)
     if not record:
         return {"priced": False, "reliable": False,
-                "reason": "variant missing from StarPets catalog"}
+                "reason": "variant missing from StarPets catalog",
+                "demand": demand, "demand_signal": signal}
 
     confidence = str(record.get("confidence") or "none").lower()
     gross = float(record.get("sellable_at") or 0)
@@ -145,7 +175,6 @@ def pet_price_info(name):
         gross = float(record.get("price_median") or record.get("price_low") or 0)
         source = "current listing"
     reliable = gross > 0 and PRICE_CONFIDENCE.get(confidence, 0) >= MIN_PRICE_CONFIDENCE
-    demand = weekly_demand(record)
     return {
         "priced": gross > 0,
         "reliable": reliable,
@@ -156,6 +185,7 @@ def pet_price_info(name):
         "catalog_name": record.get("name"),
         "sales_per_day": demand['median_daily'] or 0,
         "demand": demand,
+        "demand_signal": signal,
         "listing_count": int(record.get("count") or 0),
     }
 
@@ -167,8 +197,8 @@ def with_demand(trade):
     demand = {}
     for name in set(trade.get('give', []) + trade.get('receive', [])):
         record, _ = _lookup(name)
-        metric = weekly_demand(record)
-        demand[name] = metric
+        metric = weekly_demand(record) if record else weekly_demand(None)
+        demand[name] = dict(metric, signal=demand_resolver.resolve(name, record, metric))
     return dict(trade, item_demand=demand)
 
 # ── Conversions ───────────────────────────────────────────────────────
@@ -301,23 +331,48 @@ def _evaluate_trade(trade, user_pets):
     }, None
 
 # ── Amvgg Trade Fetching (Proxied) ────────────────────────────────────
+AMVGG_LIMIT = 100  # endpoint hard-caps here; limit=200 returns HTTP 400
+LAST_RETRY_AFTER = 0.0  # seconds the server asked us to wait, if it said so
+
 def fetch_one_batch():
     from opportunities import elvebredd_trades
     extra = elvebredd_trades()
-    batch, status = _fetch_amvgg_batch()
-    return batch + extra, 200 if extra else status
+    batch, status, _ = _fetch_amvgg_batch()
+    # Never mask an AMVGG rate-limit behind Elvebredd's success: the caller's
+    # backoff depends on seeing the real status.
+    return batch + extra, status
 
-def _fetch_amvgg_batch():
-    url = "https://amvgg.com/api/trades?limit=20"
+def _fetch_amvgg_batch(limit=AMVGG_LIMIT, cursor=None, use_proxy=True):
+    """One page of the AMVGG trade feed. Returns (trades, status, next_cursor)."""
+    global LAST_RETRY_AFTER
+    url = f"https://amvgg.com/api/trades?limit={limit}"
+    if cursor: url += "&cursor=" + quote(str(cursor), safe='')
     headers = {"User-Agent": UA, "Referer": "https://amvgg.com/trades", "Accept": "application/json"}
-    proxy = random.choice(PROXIES) if PROXIES else None
+    proxy = random.choice(PROXIES) if (PROXIES and use_proxy) else None
     req_kwargs = {"headers": headers, "timeout": 15}
     if proxy: req_kwargs["proxies"] = {"http": proxy, "https": proxy}
     try:
         r = requests.get(url, **req_kwargs)
-        if r.status_code != 200: return [], r.status_code
-        return r.json().get("trades", []), 200
-    except Exception: return [], 0
+        if r.status_code == 429:
+            try: LAST_RETRY_AFTER = float(r.headers.get("Retry-After") or 0)
+            except (TypeError, ValueError): LAST_RETRY_AFTER = 0.0
+            return [], r.status_code, None
+        if r.status_code != 200: return [], r.status_code, None
+        LAST_RETRY_AFTER = 0.0
+        data = r.json()
+        nxt = (data.get("pagination") or {}).get("nextCursor")
+        return data.get("trades", []), 200, nxt
+    except Exception: return [], 0, None
+
+def backfill(pages=2, limit=AMVGG_LIMIT):
+    """Walk the cursor back a few pages so a cold start has real history."""
+    out, cursor = [], None
+    for _ in range(max(0, pages)):
+        trades, status, cursor = _fetch_amvgg_batch(limit, cursor, use_proxy=False)
+        if status != 200 or not trades: break
+        out.extend(trades)
+        if not cursor: break
+    return out
 
 def fetch_trades(max_fetches=25, delay=1.5, debug=False):
     out, seen = [], set()

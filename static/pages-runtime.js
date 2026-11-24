@@ -16,7 +16,21 @@ async function refreshLive(){
 const key=s=>s.toLowerCase().split(/[\s_-]+/).sort().join('_');
 const inventoryNames=()=>JSON.parse(localStorage.getItem('adoptme_inventory')||'[]');
 function affordable(give,have){const counts=new Map();have.forEach(n=>counts.set(key(n),(counts.get(key(n))||0)+1));return give.every(n=>{const k=key(n),v=counts.get(k)||0;counts.set(k,v-1);return v>0})}
-async function loadSnapshot(){const r=await nativeFetch('./snapshot.json',{cache:'no-cache'});if(!r.ok)throw Error('Snapshot unavailable');snapshot=await r.json();return snapshot}
+let statics=null;
+async function loadStatics(){
+ if(statics)return statics;
+ const get=async f=>{const r=await nativeFetch('./'+f);if(!r.ok)throw Error(f+' unavailable');return r.json()};
+ const [pets,catalog]=await Promise.all([get('pets.json'),get('catalog.json')]);
+ statics={pets,catalog};return statics;
+}
+async function loadSnapshot(){
+ const s=await loadStatics();
+ const r=await nativeFetch('./trades.json',{cache:'no-cache'});
+ if(!r.ok)throw Error('Snapshot unavailable');
+ const t=await r.json();
+ snapshot={pets:s.pets,catalog:s.catalog,trades:t.trades,generated_at:t.generated_at,sources:t.sources};
+ return snapshot;
+}
 const ready=(async()=>{
  if(!liveBase&&localStorage.getItem('feed_mode')!=='snapshot'){
   try{const r=await nativeFetch('./live-config.json',{cache:'no-cache'});if(r.ok){const c=await r.json();const u=validFeed(c.feed_url);if(u){liveBase=u;liveState='Connecting to live feed…';localStorage.setItem('live_feed_url',u)}}}catch{}
@@ -35,8 +49,12 @@ window.fetch=async function(input,options={}){
  if(path==='/accept')result={success:false,error:'Open the source website to accept'};
  if(path==='/status'){
   const inv=inventoryNames(),target=localStorage.getItem('pages_target')||'',owned=data.trades.filter(t=>affordable(t.give,inv));
+  const qual=owned.filter(t=>t.qualified);
+  const summary=rows=>{const c=rows.filter(t=>t.qualified&&(t.profit_usd||0)>=10).map(t=>t.profit_usd||0);
+   return {threshold:10,count:c.length,total:Math.round(c.reduce((a,b)=>a+b,0)*100)/100,best:c.length?Math.max(...c):0};};
   result={running:active,connection_label:liveBase?liveState:'Snapshot loaded',inventory:inv,target_pet:target,total_fetches:1,total_new:data.trades.length,last_new:0,last_batch:data.trades.length,trade_count:data.trades.length,
-   results:owned.filter(t=>t.qualified),near_misses:owned.filter(t=>!t.qualified),target_trades:data.trades.filter(t=>t.qualified&&t.give.some(p=>key(p)===key(target))),stats:{},elapsed:Math.max(0,Date.now()/1000-data.generated_at),rate_limited:false};
+   results:qual,near_misses:owned.filter(t=>!t.qualified),target_trades:data.trades.filter(t=>t.qualified&&t.give.some(p=>key(p)===key(target))),stats:{},elapsed:Math.max(0,Date.now()/1000-data.generated_at),rate_limited:false,
+   profit_summary:summary(owned),expired:[],expired_summary:{threshold:10,count:0,total:0,best:0}};
  }
  if(path==='/research'){
   const base=url.searchParams.get('baseline')||'',ref=data.catalog.find(p=>key(p.name)===key(base)),hold=url.searchParams.getAll('holding');const have=hold.length?hold:[base];
@@ -67,5 +85,7 @@ document.addEventListener('DOMContentLoaded',()=>{
  ready.then(()=>updateStatus()).catch(()=>{document.getElementById('pages-status').textContent='Snapshot failed to load. Reload to retry.'});
  function updateStatus(){syncNavigation();const el=document.getElementById('pages-status');el.textContent=(liveBase?liveState:'Snapshot mode · scheduled every 5 min')+' · data updated '+new Date(snapshot.generated_at*1000).toLocaleTimeString();el.title='Live mode checks your collector every 2 seconds. Marketplace limits and network latency still apply.'}
  setInterval(()=>{if(liveBase)refreshLive().then(updateStatus)},2000);
- setInterval(()=>{if(!liveBase&&!document.hidden)loadSnapshot().then(updateStatus).catch(console.error)},10000);
+// Snapshot mode: the build only changes every ~5 min, so 30s revalidation is
+// plenty (and cuts request volume ~3x). Live mode still checks every 2s.
+ setInterval(()=>{if(!liveBase&&!document.hidden)loadSnapshot().then(updateStatus).catch(console.error)},30000);
 });

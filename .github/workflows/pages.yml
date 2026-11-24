@@ -4,7 +4,9 @@ on:
     branches: [main]
   workflow_dispatch:
   schedule:
-    - cron: '*/5 * * * *'
+    # Offset from minute 0: GitHub delays/drops scheduled runs at the top of
+    # the hour, and '*/5' fired exactly at :00, :05, :10...
+    - cron: '3/5 * * * *'
 permissions:
   contents: read
   pages: write

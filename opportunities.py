@@ -14,11 +14,17 @@ def exit_advice(bot, trade, observed, now=None):
     details = []
     for name, quantity in Counter(basket).items():
         info = bot.pet_price_info(name)
+        sig = info.get('demand_signal')
+        # no signal attached (older catalog / synthetic caller): keep the old rule
+        demand_ok = bool(sig.get('ok')) if sig else info.get('sales_per_day', 0) >= 2
         details.append({'name': name, 'quantity': quantity,
                         'sales_per_day': info.get('sales_per_day', 0),
                         'median_daily': info.get('demand', {}).get('median_daily'),
-                        'reliable': info.get('reliable', False)})
-    liquid = bool(details) and all(p['reliable'] and p['sales_per_day'] >= 2 for p in details)
+                        'reliable': info.get('reliable', False),
+                        'demand_ok': demand_ok,
+                        'demand_label': (sig or {}).get('label'),
+                        'demand_source': (sig or {}).get('source')})
+    liquid = bool(details) and all(p['reliable'] and p['demand_ok'] for p in details)
     options = []
     wanted = set()
     for t in observed:
@@ -41,7 +47,7 @@ def exit_advice(bot, trade, observed, now=None):
             continue
         if max(map(value, result['receive'])) >= max(map(value, give)):
             continue
-        next_liquid = all(bot.pet_price_info(p).get('sales_per_day', 0) >= 2
+        next_liquid = all((bot.pet_price_info(p).get('demand_signal') or {}).get('ok')
                           for p in result['receive'])
         if result['profit_usd'] < max(2, trade['recv_usd'] * .05):
             continue
