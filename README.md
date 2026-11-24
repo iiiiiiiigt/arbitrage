@@ -57,3 +57,18 @@ configuration to use the ordinary direct client. This only changes the Python
 history worker, not your browser connection or the GitHub Actions environment.
 A successful check is observed sales for enumerated exact-variant product IDs,
 not a promise of exhaustive marketplace coverage.
+
+
+### Catalog checker
+
+Open `/catalog` in Flask, or `catalog.html` on Pages. Search all catalog items,
+select a starting variant, compare net dollars per frost, and filter by the
+median daily sales over seven complete UTC days. The shortlist contains Bunny
+Swirl Neon Ride, Reindeer Neon Ride / Neon Fly Ride, Fallow Deer Fly Ride,
+Pupcicle Neon Ride, Arctic Dusk Dragon Fly Ride, Honey Badger, and Christmas
+Pudding Pup Fly Ride. Rankings use saved resale estimates; a newly checked
+lowest listing is shown separately as an asking price.
+
+Check individual variants or the shortlist to queue paced price/history checks.
+Pages needs the live feed running for these buttons; otherwise it provides a
+clearly labelled saved catalog. No credentials are included in its export.

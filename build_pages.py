@@ -27,6 +27,8 @@ def build():
     css.write_text(css.read_text(encoding='utf-8').replace("'/static/theme.css'", "'./theme.css'"), encoding='utf-8')
     js = OUT / 'static' / 'desk.js'
     js.write_text(js.read_text(encoding='utf-8').replace("'● Scanning both markets'", "(state.connection_label || 'Snapshot loaded')"), encoding='utf-8')
+    import catalog_checker
+    (OUT / 'checker.json').write_text(json.dumps(catalog_checker.snapshot()), encoding='utf-8')
     grouped = app.build_grouped_pets()
     catalog = []
     for p in bot.AMVGG_PETS:
@@ -72,10 +74,12 @@ def build():
     (OUT / 'catalog.json').write_text(json.dumps(catalog, ensure_ascii=True), encoding='utf-8')
     (OUT / 'snapshot.json').unlink(missing_ok=True)
     with app.app.test_request_context():
-        for template, name in [('index.html', 'index.html'), ('results_clean.html', 'dashboard.html')]:
+        for template, name in [('index.html', 'index.html'), ('results_clean.html', 'dashboard.html'), ('catalog.html', 'catalog.html')]:
             html = app.render_template(template, pets=grouped, target='', inventory=[])
             html = html.replace('"/static/', '"./static/').replace('href="/"', 'href="./index.html"')
-            html = html.replace('<head>', '<head><script src="./static/pages-runtime.js"></script>')
+            html = html.replace('href="/catalog"', 'href="./catalog.html"')
+            if name != 'catalog.html':
+                html = html.replace('<head>', '<head><script src="./static/pages-runtime.js"></script>')
             html = html.replace('</nav>', '</nav><p class="muted" id="pages-status" style="margin:8px 0;font-size:11px">Loading snapshot…</p>', 1)
             html = html.replace('Stop scanning</button>', 'Pause view</button>')
             html = re.sub(r'<div class="help-tip">.*?</div>',

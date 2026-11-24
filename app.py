@@ -23,6 +23,13 @@ import opportunities
 import scan_core
 
 app = Flask(__name__)
+import catalog_checker
+catalog_checker.register(app)
+
+@app.get("/catalog")
+def catalog_page():
+    return render_template("catalog.html")
+
 
 SUFFIXES = (" Fly", " Ride", " Neon", " Mega")
 GROUPED = None

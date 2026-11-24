@@ -107,7 +107,7 @@ class HistoryCollector:
         with self.lock:
             saved = self.records.get(key, {})
             from demand import weekly_demand
-            if key in self.pending or (time.time() - saved.get('fetched_at', 0) < TTL and weekly_demand(saved)['median_daily'] is not None):
+            if key in self.pending or (time.time() - saved.get('fetched_at', 0) < TTL and 'listing_low' in saved and weekly_demand(saved)['median_daily'] is not None):
                 return
             try:
                 self.queue.put_nowait((key, dict(record)))
@@ -163,7 +163,11 @@ class HistoryCollector:
                                                  params={'days': 30, 'currency': 'usd'}))
             for day in totals:
                 totals[day] += rows.get(day, 0)
-        return {'demand_scope': 'observed_product_daily_totals',
+        prices = [float(products[pid]['price']) for pid in ids
+                  if isinstance(products[pid].get('price'), (int, float))
+                  and math.isfinite(products[pid]['price']) and products[pid]['price'] > 0]
+        return {'listing_low': min(prices) if prices else None,
+                'demand_scope': 'observed_product_daily_totals',
                 'daily_sales': [{'date': day, 'count': totals[day]} for day in sorted(totals)],
                 'fetched_at': time.time(), 'product_ids': ids, 'source': BASE,
                 'coverage': 'Sales reported for all currently enumerated product IDs of this exact variant; missing reported dates count as zero observed sales.'}
