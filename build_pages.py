@@ -50,7 +50,7 @@ def build():
             if not near:
                 continue
             row = near[0]; row['qualified'] = False
-        rows.append(row)
+        rows.append(bot.with_demand(row))
     data = {'generated_at': time.time(), 'sources': sources,
             'pets': grouped, 'catalog': catalog, 'trades': rows}
     (OUT / 'snapshot.json').write_text(json.dumps(data, ensure_ascii=True), encoding='utf-8')

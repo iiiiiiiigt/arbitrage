@@ -138,8 +138,8 @@ def status():
             "target_pet": STATE["target_pet"], "total_fetches": STATE["total_fetches"],
             "total_new": STATE["total_new"], "last_new": STATE["last_new"],
             "last_batch": STATE["last_batch"], "trade_count": len(STATE["trades"]),
-            "results": results, "near_misses": STATE["near_misses"],
-            "target_trades": targets, "stats": STATE["stats"],
+            "results": [bot.with_demand(t) for t in results], "near_misses": [bot.with_demand(t) for t in STATE["near_misses"]],
+            "target_trades": [bot.with_demand(t) for t in targets], "stats": STATE["stats"],
             "elapsed": round(elapsed, 1), "rate_limited": STATE["rate_limited"],
             "last_fetch_age": round(time.time() - STATE["last_fetch_at"], 1) if STATE["last_fetch_at"] else None,
         })

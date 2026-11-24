@@ -159,6 +159,21 @@ def pet_price_info(name):
 def pet_is_pricable(name):
     return pet_price_info(name).get("reliable", False)
 
+def with_demand(trade):
+    """Attach exact-variant saved demand without interpreting failed polls as zero sales."""
+    import math
+    demand = {}
+    for name in set(trade.get('give', []) + trade.get('receive', [])):
+        record, _ = _lookup(name)
+        try:
+            daily = float((record or {}).get('avg_daily_sales') or 0)
+        except (ValueError, TypeError):
+            daily = 0
+        known = math.isfinite(daily) and daily > 0
+        demand[name] = {'daily_average': round(daily, 2) if known else None,
+                        'weekly_estimate': round(daily * 7, 2) if known else None}
+    return dict(trade, item_demand=demand)
+
 # ── Conversions ───────────────────────────────────────────────────────
 def pet_to_frost(name):
     return round(AMVGG_MAP.get(canonical_slug(name), 0), 2)

@@ -51,7 +51,7 @@ def collect():
                         continue
                     row = near[0]
                     row['qualified'] = False
-                rows.append(row)
+                rows.append(bot.with_demand(row))
             with lock:
                 state.update(generated_at=now, trades=rows,
                              sources={'collector': 'Running' if status==200 else 'Upstream unavailable / backing off',
