@@ -121,3 +121,31 @@ execute trades, learn withdrawal fees, or infer profit against purchase costs.
 Edit/remove outcomes in Personal trade coach, or export the journal and observations.
 All learning data remains in this browser; clearing site data removes it.
 Run `node test_learning_model.cjs` to validate the model rules.
+
+
+### Automatic market history (no manual outcomes required)
+
+The live collector now saves public AMVGG/Elvebredd offer snapshots to
+`.live/market-learning.sqlite3`, independently of any open browser. It retains up
+to 20,000 distinct IDs for 30 days and analyzes up to 10,000 seen in the last seven
+days. The history is refreshed every 30 seconds and survives collector restarts.
+Repeated sightings are deduplicated. Removal/expiry is never labeled a completed
+trade. Coverage is limited to the feeds actually fetched, not the whole market.
+
+Per-variant signals include posted requests, posted supply, and median quoted
+frost premium for offers requesting only that variant (possibly multiple copies).
+Mixed-basket premiums are not attributed to individual pets. Same-give-basket
+comparisons preserve exact quantities and use saved net resale estimates.
+
+With at least 10 matching quotes and five minutes of history, the coach flags
+an offer for review if its gain is below the observed lower quartile and at least
+10 percentage points below the quoted median. This identifies potentially weak
+quotes; it does not establish available better trades. Among current liquid
+follow-ups, observed requests for the resulting pets supply a bounded 10% ranking
+bonus, never extra claimed profit. StarPets actual reported sales remain the cash
+demand gate. Market history older than five minutes is excluded from decisions.
+
+Exports and manual sale reports are optional. The optional personal journal
+provides an additional conservative calibration, separate from automatic market
+signals. Neither system automatically accepts trades or claims to know actual
+trade completion or final cash-out profit.

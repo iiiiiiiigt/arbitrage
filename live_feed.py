@@ -6,6 +6,7 @@ from flask import Flask, jsonify, request
 import bot
 import opportunities
 import scan_core
+from market_learning import history as market_history
 
 feed = Flask(__name__, static_folder=None)
 import catalog_checker
@@ -83,10 +84,13 @@ def collect():
                         continue
                     row = near[0]
                 advice = scan_core.exit_advice_fast(bot, opportunities, row, index, now)
-                rows.append(opportunities.assess_demand(bot, row, observed, qualified, advice=advice))
+                row = opportunities.assess_demand(bot, row, observed, qualified, advice=advice)
+                row['observed_at'] = trade['_seen_at']
+                rows.append(row)
+            market_history.enrich(bot, rows)
             with changed:
                 state.update(version=state['version']+1, generated_at=time.time(), trades=rows,
-                             scoring_ms=round((time.perf_counter()-began)*1000, 1),
+                             market_learning=market_history.summary, scoring_ms=round((time.perf_counter()-began)*1000, 1),
                              sources={'collector': 'Running' if 'Connected' in statuses.values() else 'Upstream unavailable / backing off',
                                       **statuses, 'StarPets': bot.sales_collector.status})
                 changed.notify_all()

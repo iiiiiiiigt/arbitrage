@@ -16,3 +16,9 @@ assert.equal(M.advise(chain,sales(1)).kind,'downgrade');
 assert.equal(M.advise(chain,sales(1)).chainGain,15);
 assert.equal(M.advise({...chain,exit_advice:{...chain.exit_advice,downgrade_options:[{liquid:false,extra_net:50}]}},[]).kind,'sell');
 console.log('Passed learning calibration, warm-up, conservative cap, age limit, liquidity, slow-sale evidence and follow-up checks.');
+
+const marketTrade={...trade,market_evidence:{available:true,summary:{last_updated:now/1000,observed_since:now/1000-600},same_basket:{samples:12,median_gain_pct:50,lower_quartile_gain_pct:35}}};
+assert.equal(M.advise(marketTrade,[],now).kind,'review');
+assert.equal(M.advise({...marketTrade,market_evidence:{...marketTrade.market_evidence,summary:{last_updated:now/1000-600,observed_since:0}}},[],now).kind,'sell');
+assert.equal(M.advise({...marketTrade,market_evidence:{...marketTrade.market_evidence,same_basket:{samples:2,median_gain_pct:50,lower_quartile_gain_pct:35}}},[],now).kind,'sell');
+console.log('Passed automatic quote benchmark, minimum evidence and stale-history guards.');
