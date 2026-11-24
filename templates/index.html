@@ -58,6 +58,7 @@
         .value { color: #ff9900; font-weight: bold; font-size: 13px; min-height: 18px; }
         .value.empty { color: #444; }
     .variant-select{display:block;width:100%;background:#101a2a;color:white;border:1px solid #34435f;border-radius:6px;padding:7px;margin:6px 0}.variant-label{font-size:11px;color:#abc}.add-copy,.owned-row button{background:#214d40;color:#dfffee;border:1px solid #47836b;border-radius:6px;padding:6px 10px;cursor:pointer}.owned-row{display:flex;align-items:center;gap:5px;margin-top:8px;font-size:11px}.owned-row span{flex:1;text-align:left}.card{cursor:default}
+.toggles{display:flex;flex-wrap:wrap;justify-content:center;gap:4px}.toggles .toggle{width:auto!important;min-width:32px;padding:6px!important;font-size:11px}
 </style>
 <meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="/static/desk.css">
 </head>
@@ -84,7 +85,12 @@
                     <img src="{{ pet.image }}" alt="{{ pet.name }}" loading="lazy"
                          onerror="this.src='https://amvgg.com/item-not-found.png'">
                     <div class="pet-name">{{ pet.name }}</div>
-                    <label class="variant-label">Variant<select class="variant-select" aria-label="{{ pet.name }} variant"></select></label>
+                    <div class="toggles" role="group" aria-label="{{ pet.name }} variant">
+                        <button type="button" class="toggle" data-mod="Fly" aria-pressed="false">Fly</button>
+                        <button type="button" class="toggle" data-mod="Ride" aria-pressed="false">Ride</button>
+                        <button type="button" class="toggle" data-mod="Neon" aria-pressed="false">Neon</button>
+                        <button type="button" class="toggle" data-mod="Mega" aria-pressed="false">Mega</button>
+                    </div>
                     <button type="button" class="add-copy">+ Add pet</button>
                     <div class="owned-variants"></div>
                     <div class="value empty">—</div>
@@ -109,11 +115,9 @@ function saveAndRefresh(){
  document.getElementById('submit-btn').disabled=!inventory.length&&!document.getElementById('mode-all').checked;
 }
 document.querySelectorAll('.card').forEach(card=>{
- const base=card.dataset.base, variants=BY_BASE[base]||{}, select=card.querySelector('.variant-select');
+ const base=card.dataset.base, variants=BY_BASE[base]||{}, mods=new Set();
+ const chosen=()=>Object.keys(variants).find(s=>{const parts=s.split(' ').filter(Boolean);return parts.length===mods.size&&parts.every(p=>mods.has(p))});
  const full=suffix=>suffix?base+' '+suffix:base;
- for(const suffix of Object.keys(variants)){
-  const option=document.createElement('option');option.value=full(suffix);option.textContent=suffix||'Normal (no potions)';select.append(option);
- }
  function render(){
   const owned=card.querySelector('.owned-variants');owned.replaceChildren();let total=0;
   for(const suffix of Object.keys(variants)){
@@ -126,12 +130,14 @@ document.querySelectorAll('.card').forEach(card=>{
    row.append(label,minus,plus);owned.append(row);
   }
   card.classList.toggle('selected',total>0);
-  const suffix=Object.keys(variants).find(s=>full(s)===select.value);
-  card.querySelector('.value').textContent=(variants[suffix]??0).toFixed(4)+' frost each';
+  const suffix=chosen();
+  card.querySelector('.value').textContent=suffix===undefined?'Variant unavailable':variants[suffix].toFixed(4)+' frost each';
+  card.querySelector('.add-copy').disabled=suffix===undefined;
+  card.querySelectorAll('[data-mod]').forEach(b=>{b.classList.toggle('on',mods.has(b.dataset.mod));b.setAttribute('aria-pressed',String(mods.has(b.dataset.mod)))});
   saveAndRefresh();
  }
- select.onchange=render;
- card.querySelector('.add-copy').onclick=()=>{if(select.value)inventory.push(select.value);render()};
+ card.querySelectorAll('[data-mod]').forEach(button=>button.onclick=()=>{const mod=button.dataset.mod;if(mods.has(mod))mods.delete(mod);else{mods.add(mod);if(mod==='Neon')mods.delete('Mega');if(mod==='Mega')mods.delete('Neon')}render()});
+ card.querySelector('.add-copy').onclick=()=>{const suffix=chosen();if(suffix!==undefined)inventory.push(full(suffix));render()};
  render();
 });
 
