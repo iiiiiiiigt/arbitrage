@@ -15,7 +15,9 @@ Catalog prices are saved estimates, not executable quotes. Calculations assume a
 
 ## GitHub Pages
 
-The `docs/` directory is a static project landing page. GitHub Pages cannot run Flask, authenticated APIs, or the background scanner. The workflow deploys only `docs/`; run the application locally for live scanning. Enable GitHub Actions as the Pages source in repository Settings → Pages after pushing.
+The `docs/` directory contains the static dashboard, generated from the same templates by `python build_pages.py`. Browser-local inventory and focus selection work with the bundled catalog and trade snapshots. GitHub Actions rebuilds and publishes approximately every five minutes; scheduled jobs may be delayed. The page displays the snapshot timestamp. The catalog itself remains a saved estimate until updated separately.
+
+GitHub Pages cannot run Flask or call the marketplaces directly because their APIs do not allow cross-origin browser requests. Acceptance opens the marketplace website, and no session cookies are published. Use the local Flask app for faster live polling. Only `docs/` is deployed.
 
 ## Tests
 
