@@ -224,7 +224,7 @@ def refresh(bot, opportunities, state):
             if not row or tid in known:
                 continue
             # keep the full row: price, frost, profit, demand labels and all
-            keep = ('trade_id', 'author', 'give', 'receive', 'give_usd', 'recv_usd',
+            keep = ('item_net', 'trade_id', 'author', 'give', 'receive', 'give_usd', 'recv_usd',
                     'profit_usd', 'profit_pct', 'give_frost', 'recv_frost',
                     'stars', 'sellability', 'reason', 'qualified', 'unpriced')
             entry = {k: row.get(k) for k in keep}

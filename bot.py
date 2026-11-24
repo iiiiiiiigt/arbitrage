@@ -202,7 +202,11 @@ def with_demand(trade):
             sales_collector.enqueue(record.get('_key'), record)
         metric = pet_sales_demand(record)
         demand[name] = dict(metric, signal=demand_resolver.resolve(name, record, metric))
-    return dict(trade, item_demand=demand)
+    prices = {}
+    for name in demand:
+        info = pet_price_info(name)
+        prices[name] = round(info['net'], 2) if info.get('reliable') else None
+    return dict(trade, item_demand=demand, item_net=prices)
 
 def pet_sales_demand(record):
     cached = sales_collector.get((record or {}).get('_key'))

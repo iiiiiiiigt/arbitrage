@@ -41,7 +41,7 @@ function updateStamp(){
  el.textContent=parts.join(' · ');
 }
 
-function petSide(names,label,total,demand={}){const side=node('div');side.append(node('div','side-label',label+' · '+money(total)+' net'));for(const name of names){const row=node('div','pet-item');const img=node('img');img.src='https://amvgg.com/items/'+encodeURIComponent(name.replace(/(?:\s+(Fly|Ride|Neon|Mega))+$/i,''))+'.webp';img.alt='';img.loading='lazy';img.onerror=()=>{img.style.visibility='hidden'};const text=node('div');text.append(node('span','',name));const d=demand[name];const fmt=n=>Number(n).toLocaleString(undefined,{maximumFractionDigits:2});const known=Number.isFinite(d?.median_daily)&&Number.isFinite(d?.weekly_total);const sig=(d?.signal)||d;const caption=node('span','micro',known?'Observed sales: '+fmt(d.median_daily)+'/day median · '+fmt(d.weekly_total)+' in 7 days':'Cash sales: unavailable');caption.title=known?'Seven complete UTC days ('+d.period_start+' to '+d.period_end+'). '+(d.coverage||'Exact-variant daily totals.'):(d?.reason||'StarPets history unavailable');text.append(caption);if(sig?.source==='amvgg_rating')text.append(node('span','micro','Trade interest: '+sig.level+' (AMVGG; not cash sales)'));row.append(img,text);side.append(row)}return side}
+function petSide(names,label,total,demand={},prices={}){const side=node('div');side.append(node('div','side-label',label+' · '+money(total)+' net'));for(const name of names){const row=node('div','pet-item');const img=node('img');img.src='https://amvgg.com/items/'+encodeURIComponent(name.replace(/(?:\s+(Fly|Ride|Neon|Mega))+$/i,''))+'.webp';img.alt='';img.loading='lazy';img.onerror=()=>{img.style.visibility='hidden'};const text=node('div');text.append(node('span','',name));const value=prices[name];const received=label==='YOU RECEIVE'||label==='GOT';text.append(node('span','micro item-net',Number.isFinite(value)?(received?'+':'')+money(value)+' estimated resale after 30% fee':'Net resale unavailable'));const d=demand[name];const fmt=n=>Number(n).toLocaleString(undefined,{maximumFractionDigits:2});const known=Number.isFinite(d?.median_daily)&&Number.isFinite(d?.weekly_total);const sig=(d?.signal)||d;const caption=node('span','micro',known?'Observed sales: '+fmt(d.median_daily)+'/day median · '+fmt(d.weekly_total)+' in 7 days':'Cash sales: unavailable');caption.title=known?'Seven complete UTC days ('+d.period_start+' to '+d.period_end+'). '+(d.coverage||'Exact-variant daily totals.'):(d?.reason||'StarPets history unavailable');text.append(caption);if(sig?.source==='amvgg_rating')text.append(node('span','micro','Trade interest: '+sig.level+' (AMVGG; not cash sales)'));row.append(img,text);side.append(row)}return side}
 function ageLabel(sec){
  if(!Number.isFinite(sec)||sec<90)return null;
  const m=Math.floor(sec/60);
@@ -73,7 +73,7 @@ function expiredCard(e){
  card.append(head);
  const dm={};for(const [n,v] of Object.entries(e.demand||{}))dm[n]={median_daily:v.median_daily,signal:{label:v.label}};
  const ex=node('div','exchange');
- ex.append(petSide(e.give||[],'GAVE',e.give_usd,dm),node('div','exchange-arrow','→'),petSide(e.receive||[],'GOT',e.recv_usd,dm));
+ ex.append(petSide(e.give||[],'GAVE',e.give_usd,dm,e.item_net),node('div','exchange-arrow','→'),petSide(e.receive||[],'GOT',e.recv_usd,dm,e.item_net));
  card.append(ex);
  const bottom=node('div','deal-bottom');const nums=node('div','numbers');
  const gain=node('div');gain.append(node('span','micro','ESTIMATED NET CHANGE'),
@@ -105,7 +105,7 @@ function card(t){
  // an expired window entry can linger; say so rather than implying it is live
  const stale=ageLabel(t.seen_age);
  if(stale)head.append(node('span','pill','last seen '+stale));
- const exchange=node('div','exchange');exchange.append(petSide(t.give,'YOU GIVE',incomplete?null:t.give_usd,t.item_demand),node('div','exchange-arrow','→'),petSide(t.receive,'YOU RECEIVE',incomplete?null:t.recv_usd,t.item_demand));card.append(exchange);
+ const exchange=node('div','exchange');exchange.append(petSide(t.give,'YOU GIVE',incomplete?null:t.give_usd,t.item_demand,t.item_net),node('div','exchange-arrow','→'),petSide(t.receive,'YOU RECEIVE',incomplete?null:t.recv_usd,t.item_demand,t.item_net));card.append(exchange);
  const bottom=node('div','deal-bottom');const nums=node('div','numbers');const gain=node('div');gain.append(node('span','micro','ESTIMATED NET CHANGE'),node('div','gain'+(incomplete?' unknown':t.profit_usd<0?' loss':''),incomplete?'Profit unknown':(t.profit_usd>0?'+':'')+money(t.profit_usd)));nums.append(gain);
  const frost=node('div','frost');frost.append(node('span','micro','FROST VALUE · GIVE → RECEIVE'),node('span','',t.give_frost+' → '+t.recv_frost+'  ('+((t.recv_frost-t.give_frost)>=0?'+':'')+(t.recv_frost-t.give_frost).toFixed(4)+')'));nums.append(frost);bottom.append(nums);
  if(t.reason){bottom.append(node('p','muted',incomplete?'Some items lack reliable prices. The total profit cannot be determined.':t.reason.replace('no USD profit','Estimated loss')))}
