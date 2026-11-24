@@ -36,7 +36,7 @@ GROUPED = None
 
 STATE = {
     "running": False, "thread": None, "trades": {}, "results": [],
-    "near_misses": [], "target_trades": [], "stats": {}, "inventory": set(),
+    "near_misses": [], "target_trades": [], "stats": {}, "inventory": [],
     "target_pet": "", "started_at": 0, "last_fetch_at": 0, "total_fetches": 0,
     "total_new": 0, "last_new": 0, "last_batch": 0, "rate_limited": False,
     "payload": None, "gen": 0,
@@ -217,8 +217,8 @@ def start_scanner(inventory, target_pet="", mode="inventory"):
         STATE["stats"] = {}
         STATE["payload"] = None
         STATE["archive"] = []
-        STATE["inventory"] = set(inventory)
-        STATE["mode"] = mode if mode in ("inventory", "all") else "inventory"
+        STATE["inventory"] = list(inventory)
+        STATE["mode"] = mode if mode in ("inventory", "all", "preferred") else "inventory"
         STATE["target_pet"] = target_pet or ""
         STATE["started_at"] = time.time()
         STATE["last_fetch_at"] = 0
@@ -277,17 +277,24 @@ def research():
         bot, baseline, selected or ([baseline] if baseline else holdings), trades))
 
 
+def parse_inventory(raw):
+    values = json.loads(raw)
+    if not isinstance(values, list) or len(values) > 10000 or any(not isinstance(n, str) or not n.strip() for n in values):
+        raise ValueError('Inventory must be a list of pet names')
+    return values
+
+
 @app.route("/find", methods=["POST"])
 def find():
     try:
-        inventory = set(json.loads(request.form.get("inventory", "[]")))
+        inventory = parse_inventory(request.form.get("inventory", "[]"))
         target = request.form.get("target_pet", "").strip()
     except Exception:
-        inventory, target = set(), ""
+        inventory, target = [], ""
     mode = request.form.get("mode")
     if mode not in ("all", "preferred"):
         mode = "inventory"
-    if not inventory and mode != "all":
+    if not inventory and mode == "inventory":
         return render_template("results_clean.html", error="Select at least one pet.",
                                inventory=[], target="")
     start_scanner(inventory, target_pet=target, mode=mode)
@@ -342,7 +349,7 @@ def accept():
 @app.route("/update_inventory", methods=["POST"])
 def update_inventory():
     try:
-        new_inv = set(json.loads(request.form.get("inventory", "[]")))
+        new_inv = parse_inventory(request.form.get("inventory", "[]"))
     except Exception:
         return jsonify({"ok": False})
     with LOCK:

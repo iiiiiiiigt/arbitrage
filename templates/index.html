@@ -57,13 +57,14 @@
         .toggle.on.mega { background: #a855f7; color: #fff; border-color: #a855f7; }
         .value { color: #ff9900; font-weight: bold; font-size: 13px; min-height: 18px; }
         .value.empty { color: #444; }
-    </style>
+    .variant-select{display:block;width:100%;background:#101a2a;color:white;border:1px solid #34435f;border-radius:6px;padding:7px;margin:6px 0}.variant-label{font-size:11px;color:#abc}.add-copy,.owned-row button{background:#214d40;color:#dfffee;border:1px solid #47836b;border-radius:6px;padding:6px 10px;cursor:pointer}.owned-row{display:flex;align-items:center;gap:5px;margin-top:8px;font-size:11px}.owned-row span{flex:1;text-align:left}.card{cursor:default}
+</style>
 <meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="/static/desk.css">
 </head>
 <body>
     <div class="container">
         <nav><a class="logo" href="/">◈ TRADE DESK</a><span class="nav-note">ADOPT ME / MARKET RESEARCH</span><a class="outline" href="/catalog">Catalog checker</a></nav><div class="brand">STEP 01 / YOUR INVENTORY</div><h1>What are you trading?</h1>
-        <p class="subtitle">Search for pets you own, select their variants, then find opportunities. F = Fly · R = Ride · N = Neon · M = Mega.</p>
+        <p class="subtitle">Search for pets you own, choose a variant and add as many copies as you own. Add other variants separately, then find opportunities. F = Fly · R = Ride · N = Neon · M = Mega.</p>
 
         <form method="POST" action="/find" id="search-form">
             <input type="hidden" name="target_pet" id="focus-hidden"><details class="toolbox"><summary>Focus on one pet <span>Optional — you can do this later</span></summary><section id="focus-picker"></section></details>
@@ -83,12 +84,9 @@
                     <img src="{{ pet.image }}" alt="{{ pet.name }}" loading="lazy"
                          onerror="this.src='https://amvgg.com/item-not-found.png'">
                     <div class="pet-name">{{ pet.name }}</div>
-                    <div class="toggles" onclick="event.stopPropagation()">
-                        <button type="button" class="toggle fly"  data-var="fly">F</button>
-                        <button type="button" class="toggle ride" data-var="ride">R</button>
-                        <button type="button" class="toggle neon" data-var="neon">N</button>
-                        <button type="button" class="toggle mega" data-var="mega">M</button>
-                    </div>
+                    <label class="variant-label">Variant<select class="variant-select" aria-label="{{ pet.name }} variant"></select></label>
+                    <button type="button" class="add-copy">+ Add pet</button>
+                    <div class="owned-variants"></div>
                     <div class="value empty">—</div>
                 </div>
                 {% endfor %}
@@ -103,124 +101,38 @@ for (const p of PET_DATA) BY_BASE[p.name] = p.variants;
 
 // ── State ──────────────────────────────────────────────────────────
 const STORAGE_KEY = "adoptme_inventory";
-// baseStates: {baseName: {selected, fly, ride, neon, mega}}
-let baseStates = loadStates();
-
-function loadStates() {
-    const inv = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
-    const st = {};
-    for (const variant of inv) {
-        // Find base: longest prefix matching a known base
-        let base = null;
-        for (const b of Object.keys(BY_BASE)) {
-            if ((variant === b || variant.startsWith(b + " ")) && (!base || b.length > base.length)) base = b;
-        }
-        if (!base) continue;
-        const rest = variant === base ? "" : variant.substring(base.length + 1);
-        st[base] = {
-            selected: true,
-            fly:  rest.includes("Fly"),
-            ride: rest.includes("Ride"),
-            neon: rest.includes("Neon"),
-            mega: rest.includes("Mega"),
-        };
-    }
-    return st;
+let inventory = (()=>{try{const saved=JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]');return Array.isArray(saved)?saved.filter(n=>typeof n==='string'):[]}catch{return []}})();
+function getInventory(){return inventory.slice()}
+function saveAndRefresh(){
+ localStorage.setItem(STORAGE_KEY,JSON.stringify(inventory));
+ document.getElementById('inv-count').textContent=inventory.length;
+ document.getElementById('submit-btn').disabled=!inventory.length&&!document.getElementById('mode-all').checked;
 }
-
-function stateFor(base) {
-    if (!baseStates[base]) baseStates[base] = { selected: false, fly: false, ride: false, neon: false, mega: false };
-    return baseStates[base];
-}
-
-function suffixOf(st) {
-    let s = "";
-    if (st.fly)  s += " Fly";
-    if (st.ride) s += " Ride";
-    if (st.mega) s += " Mega";
-    else if (st.neon) s += " Neon";
-    return s.trim();
-}
-
-function variantName(base, st) {
-    const suf = suffixOf(st);
-    return suf ? base + " " + suf : base;
-}
-
-function getInventory() {
-    const out = [];
-    for (const [base, st] of Object.entries(baseStates)) {
-        if (st.selected) out.push(variantName(base, st));
-    }
-    return out;
-}
-
-function saveAndRefresh() {
-    const inv = getInventory();
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(inv));
-    document.getElementById("inv-count").textContent = inv.length;
-    // all-pets mode works with an empty inventory
-    const allMode = document.getElementById("mode-all") && document.getElementById("mode-all").checked;
-    document.getElementById("submit-btn").disabled = inv.length === 0 && !allMode;
-}
-
-// ── Attach to each card ────────────────────────────────────────────
-document.querySelectorAll(".card").forEach(card => {
-    const base = card.dataset.base;
-    const variants = BY_BASE[base] || {};
-
-    function render() {
-        const st = stateFor(base);
-        card.classList.toggle("selected", st.selected);
-        card.querySelector(".fly").classList.toggle("on",  st.fly);
-        card.querySelector(".ride").classList.toggle("on", st.ride);
-        card.querySelector(".neon").classList.toggle("on", st.neon);
-        card.querySelector(".mega").classList.toggle("on", st.mega);
-
-        const valEl = card.querySelector(".value");
-        if (st.selected) {
-            const v = variants[suffixOf(st)];
-            if (v !== undefined) {
-                valEl.textContent = v.toFixed(2) + " frost";
-                valEl.classList.remove("empty");
-            } else {
-                valEl.textContent = "—";
-                valEl.classList.add("empty");
-            }
-        } else {
-            valEl.textContent = "—";
-            valEl.classList.add("empty");
-        }
-        saveAndRefresh();
-    }
-
-    // Click card body (not toggles) → toggle selection
-    card.addEventListener("click", () => {
-        const st = stateFor(base);
-        st.selected = !st.selected;
-        if (!st.selected) { st.fly = st.ride = st.neon = st.mega = false; }
-        render();
-    });
-
-    // Toggle buttons
-    card.querySelector(".fly").addEventListener("click", () => {
-        const st = stateFor(base);
-        st.selected = true; st.fly = !st.fly; render();
-    });
-    card.querySelector(".ride").addEventListener("click", () => {
-        const st = stateFor(base);
-        st.selected = true; st.ride = !st.ride; render();
-    });
-    card.querySelector(".neon").addEventListener("click", () => {
-        const st = stateFor(base);
-        st.selected = true; st.neon = !st.neon; if (st.neon) st.mega = false; render();
-    });
-    card.querySelector(".mega").addEventListener("click", () => {
-        const st = stateFor(base);
-        st.selected = true; st.mega = !st.mega; if (st.mega) st.neon = false; render();
-    });
-
-    render();
+document.querySelectorAll('.card').forEach(card=>{
+ const base=card.dataset.base, variants=BY_BASE[base]||{}, select=card.querySelector('.variant-select');
+ const full=suffix=>suffix?base+' '+suffix:base;
+ for(const suffix of Object.keys(variants)){
+  const option=document.createElement('option');option.value=full(suffix);option.textContent=suffix||'Normal (no potions)';select.append(option);
+ }
+ function render(){
+  const owned=card.querySelector('.owned-variants');owned.replaceChildren();let total=0;
+  for(const suffix of Object.keys(variants)){
+   const name=full(suffix),count=inventory.filter(n=>n===name).length;if(!count)continue;total+=count;
+   const row=document.createElement('div');row.className='owned-row';
+   const label=document.createElement('span');label.textContent=(suffix||'Normal')+' × '+count;
+   const minus=document.createElement('button');minus.type='button';minus.textContent='−';minus.setAttribute('aria-label','Remove one '+name);
+   minus.onclick=()=>{const i=inventory.indexOf(name);if(i>=0)inventory.splice(i,1);render()};
+   const plus=document.createElement('button');plus.type='button';plus.textContent='+';plus.setAttribute('aria-label','Add one '+name);plus.onclick=()=>{inventory.push(name);render()};
+   row.append(label,minus,plus);owned.append(row);
+  }
+  card.classList.toggle('selected',total>0);
+  const suffix=Object.keys(variants).find(s=>full(s)===select.value);
+  card.querySelector('.value').textContent=(variants[suffix]??0).toFixed(4)+' frost each';
+  saveAndRefresh();
+ }
+ select.onchange=render;
+ card.querySelector('.add-copy').onclick=()=>{if(select.value)inventory.push(select.value);render()};
+ render();
 });
 
 // ── Search filter ─────────────────────────────────────────────────

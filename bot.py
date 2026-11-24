@@ -1,5 +1,6 @@
 import requests, json, re, os, time, random
 from pathlib import Path
+from collections import Counter
 from urllib.parse import quote
 from demand import weekly_demand
 from sales_history import collector as sales_collector
@@ -305,7 +306,7 @@ def _evaluate_trade(trade, user_pets, ignore_inventory=False):
     if not ok: return None, "malformed offering"
 
     if not give_pets or not receive_pets: return None, "sign-only side"
-    if any(p not in user_pets for p in give_pets) and not ignore_inventory:
+    if not ignore_inventory and (Counter(map(canonical_slug, give_pets)) - Counter(map(canonical_slug, user_pets))):
         return None, "not in your inventory"
     if give_signs or recv_signs:
         all_signs = list(set(give_signs + recv_signs))
