@@ -76,13 +76,17 @@ def variant_multiplier(name):
 # ── StarPets Catalog Lookups ──────────────────────────────────────────
 # Prefer the catalog's displayed pet name. Keep this only for a future case
 # where the two sites truly use different display names.
-SLUG_ALIASES = {}
+SLUG_ALIASES = {
+    'ride_a_pet_potion': 'pet_riding_potion',
+    'ride_a_pet_potion_forever': 'pet_riding_potion',
+    'fly_a_pet_potion': 'pet_flying_potion',
+    'fly_a_pet_potion_forever': 'pet_flying_potion',
+}
 
 _PRICEABLE_BASES = {k.split("|", 1)[0] for k in CATALOG}
 _DISPLAY_TO_BASES = {}
 for key, record in CATALOG.items():
-    if record.get("type") != "pet":
-        continue
+    # Include potions, petwear, vehicles and toys, but never ambiguous names.
     displayed = to_slug(record.get("name") or "")
     if displayed:
         _DISPLAY_TO_BASES.setdefault(displayed, set()).add(key.split("|", 1)[0])

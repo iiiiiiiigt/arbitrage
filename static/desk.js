@@ -1,4 +1,15 @@
 let state=null,tab='good',stopped=false,researchRows=[];
+function fullyPriced(t){return !t.unknown?.length && !/unpriced|low-confidence/i.test(t.reason||'')}
+function screenPrices(data){
+ const excluded=new Set();
+ for(const name of ['results','near_misses','target_trades']){
+  data[name]=data[name].filter(t=>{if(fullyPriced(t))return true;excluded.add(t.trade_id);return false});
+ }
+ let note=document.getElementById('price-coverage');
+ if(!note){note=node('p','muted');note.id='price-coverage';document.querySelector('.feed-head').after(note)}
+ note.textContent=excluded.size?excluded.size+' offers excluded because at least one exact item lacks a supported price.':'';
+ return data;
+}
 const $=id=>document.getElementById(id);
 function node(tag,cls,text){const el=document.createElement(tag);if(cls)el.className=cls;if(text!==undefined)el.textContent=text;return el}
 const money=n=>n==null?'Unknown':'$'+Number(n).toFixed(2);
@@ -18,7 +29,7 @@ function card(t){
 function render(){if(!state)return;$('scanned').textContent=state.trade_count;$('good-count').textContent=state.results.length;$('review-count').textContent=state.near_misses.length;$('connection').textContent=state.rate_limited?'Rate limited · slowing down':state.running?'● Scanning both markets':'Scanning stopped';const list=tab==='good'?state.results:tab==='review'?state.near_misses:state.target_trades;$('feed').replaceChildren();if(!list.length){const empty=node('div','empty');empty.append(node('h2','',tab==='focus'&&!state.target_pet?'Choose a focus pet above':'No matching offers yet'),node('p','',tab==='good'?'The scanner is looking for trades that clear your price and margin checks.':'Try another tab or keep scanning.'));$('feed').append(empty)}else list.forEach(t=>$('feed').append(card(t)))}
 document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{tab=b.dataset.tab;document.querySelectorAll('[data-tab]').forEach(x=>x.classList.toggle('active',x===b));render()});
 $('pause').onclick=async()=>{try{const r=await fetch('/stop',{method:'POST'});if(!r.ok)throw Error();stopped=true;$('pause').disabled=true;$('pause').textContent='Stopped';if(state){state.running=false;render()}}catch{$('connection').textContent='Could not stop. Retry.'}};
-async function poll(){try{const r=await fetch('/status');if(!r.ok)throw Error();state=await r.json();render()}catch{$('connection').textContent='Connection lost · retrying'}if(!stopped)setTimeout(poll,2000)}poll();
+async function poll(){try{const r=await fetch('/status');if(!r.ok)throw Error();state=screenPrices(await r.json());render()}catch{$('connection').textContent='Connection lost · retrying'}if(!stopped)setTimeout(poll,2000)}poll();
 function researchTable(){const table=node('table');const header=node('tr');['Pet variant','Net resale','Potential uplift','Reported sales/day',''].forEach(s=>header.append(node('th','',s)));table.append(header);const q=$('research-filter').value.toLowerCase();researchRows.filter(r=>r.name.toLowerCase().includes(q)).forEach(r=>{const row=node('tr');[r.name,money(r.net),r.uplift_pct+'%',r.sales_per_day||'Unknown'].forEach(v=>row.append(node('td','',String(v))));const cell=node('td');const b=node('button','outline','Explore next');b.onclick=()=>{$('research-base').value=r.name;research()};cell.append(b);row.append(cell);table.append(row)});$('research-list').replaceChildren(table)}
 async function research(){const base=$('research-base').value.trim();if(!base){$('research-note').textContent='Select a focus pet or enter an exact variant first.';return}$('research-go').disabled=true;try{const r=await fetch('/research?'+new URLSearchParams({baseline:base}));if(!r.ok)throw Error();const d=await r.json();researchRows=d.candidates;$('research-note').textContent=researchRows.length+' smaller candidates. These are theoretical comparisons; an available trade is required.';researchTable()}catch{$('research-note').textContent='Research unavailable. Please retry.'}finally{$('research-go').disabled=false}}
 $('research-go').onclick=research;$('research-filter').oninput=researchTable;window.addEventListener('downgrade-focus',e=>{$('research-base').value=e.detail;if(e.detail)research()});
