@@ -69,7 +69,7 @@ def exit_advice(bot, trade, observed, now=None):
     return {'decision': decision, 'reason': reason, 'sell_now_net': trade['recv_usd'],
             'demand_passed': bool(liquid or (best and best['liquid'])),
             'received_demand': details, 'recent_wanted_offers': len(wanted),
-            'next_step': best, 'note': 'Sellability requires a verified seven-day median of at least 2 sales/day for each received variant. Missing history does not pass this check. Requests in the last 2 minutes indicate interest, not completed trades. One-step estimates include a 30% commission assumption.'}
+            'next_step': best, 'note': 'Demand checks use verified daily sales when available, otherwise StarPets sell-through estimates or AMVGG demand ratings. AMVGG ratings indicate trading interest, not verified cash sales or sale speed. Requests in the last 2 minutes are not completed trades. Estimates assume a 30% commission.'}
 
 def assess_demand(bot, row, observed, margin_passed):
     """A price margin alone cannot qualify an offer as worth considering."""
