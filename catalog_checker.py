@@ -3,11 +3,7 @@ import time
 from flask import jsonify, request
 import bot
 
-SHORTLIST = {
-    'Bunny Swirl Neon Ride', 'Reindeer Neon Ride', 'Reindeer Neon Fly Ride',
-    'Fallow Deer Fly Ride', 'Pupcicle Neon Ride', 'Arctic Dusk Dragon Fly Ride',
-    'Honey Badger', 'Christmas Pudding Pup Fly Ride',
-}
+from downgrade_preferences import SHORTLIST
 
 
 def canonical(name):

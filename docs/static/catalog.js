@@ -13,11 +13,11 @@ function render(){
  if($('scope').value==='smaller')rows=rows.filter(r=>base&&bd!==null&&r.frost>0&&r.frost<base.frost&&density(r)>bd);
  if($('demand').value==='liquid')rows=rows.filter(r=>r.median_daily!==null&&r.median_daily>=2);
  if($('demand').value==='checked')rows=rows.filter(r=>r.median_daily!==null);
- rows.sort((a,b)=>$('sort').value==='name'?a.name.localeCompare(b.name):$('sort').value==='sales'?(b.median_daily??-1)-(a.median_daily??-1):(density(b)??-1)-(density(a)??-1));
+ rows.sort((a,b)=>$('sort').value==='name'?a.name.localeCompare(b.name):$('sort').value==='sales'?(b.median_daily??-1)-(a.median_daily??-1):(density(b)??-1)*(b.shortlist?1.2:1)-(density(a)??-1)*(a.shortlist?1.2:1));
  $('comparison').textContent=rows.length+' exact variants. '+(base?'Starting with '+base.name+': '+money(base.net)+' estimated net, '+num(base.frost)+' frost.':'Select a starting pet to see a whole-item downgrade comparison.');
  $('cards').replaceChildren();
  for(const r of rows.slice(0,limit)){
-  const c=el('article','catalog-item'),img=el('img');img.src='https://amvgg.com/items/'+encodeURIComponent(r.base)+'.webp';img.alt='';img.loading='lazy';img.onerror=()=>img.remove();c.append(img,el('h3','',r.name),el('small','',r.type+' · '+r.confidence+' price confidence'));
+  const c=el('article','catalog-item'),img=el('img');img.src='https://amvgg.com/items/'+encodeURIComponent(r.base)+'.webp';img.alt='';img.loading='lazy';img.onerror=()=>img.remove();if(r.shortlist)c.append(el('small','','Preferred downgrade target'));c.append(img,el('h3','',r.name),el('small','',r.type+' · '+r.confidence+' price confidence'));
   const m=el('div','metrics');metric(m,'Estimated net / frost',money(density(r)),true);metric(m,'Saved frost value',num(r.frost));metric(m,'Saved gross → net',money(r.gross)+' → '+money(r.net));metric(m,'Last checked lowest listing',money(r.listing_low));metric(m,'Median sales / day',num(r.median_daily));metric(m,'Observed sales / week',num(r.weekly_total));c.append(m);
   if(base&&bd!==null&&r.frost>0&&r.frost<base.frost&&r.net!==null){const qty=Math.floor((base.frost+1e-10)/r.frost),gain=qty*r.net-base.net;c.append(el('p','',qty+' × this variant ≈ '+money(qty*r.net)+' net ('+(gain>=0?'+':'')+money(gain)+' versus your starting pet). '+(base.frost-qty*r.frost).toFixed(4)+' frost remains unallocated. This is a theoretical exchange.'))}
   c.append(el('p','muted',r.median_daily===null?'Sales are unchecked, stale or unavailable. Check before treating this as a resale exit.':'Sales window: '+r.period_start+' to '+r.period_end+'. Checked '+new Date(r.checked_at*1000).toLocaleString()+'.'));

@@ -117,7 +117,7 @@ function card(t){
   bottom.append(details)}
  const followups=t.exit_advice?.downgrade_options||[];
  if(followups.length){const panel=node('div','recommendation');panel.append(node('strong','','Next downgrades found'),node('p','micro','Alternative offers using only pets you would receive. Extra gains are estimates, not additive.'));
-  for(const f of followups){const option=node('div');option.append(node('p','',f.give.join(', ')+' → '+f.receive.join(', ')),node('p','', '+'+money(f.extra_net)+' extra ('+f.extra_pct+'%) · holdings after trade: '+money(f.basket_net_after)),node('p','micro',f.liquid?'StarPets sales check passed for resulting holdings':'Cash-sales check incomplete or below threshold'));
+  for(const f of followups){const option=node('div');if(f.preferred)option.append(node('strong','','Preferred downgrade target'));option.append(node('p','',f.give.join(', ')+' → '+f.receive.join(', ')),node('p','', '+'+money(f.extra_net)+' extra ('+f.extra_pct+'%) · holdings after trade: '+money(f.basket_net_after)),node('p','micro',f.liquid?'StarPets sales check passed for resulting holdings':'Cash-sales check incomplete or below threshold'));
    const link=node('a','outline',tradeLabel(f.trade_id));link.href=tradeUrl(f.trade_id);link.target='_blank';link.rel='noopener noreferrer';option.append(link);panel.append(option)}bottom.append(panel)}
  const actions=node('div','actions');const elveTrade=elve;
  if(elveTrade){

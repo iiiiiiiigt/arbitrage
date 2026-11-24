@@ -175,7 +175,7 @@ def exit_advice_fast(bot, opportunities, row, by_slug, now=None):
                             'liquid': prep['next_liquid'] and all(
                                 opportunities.cash_demand_ok(bot.pet_price_info(p)) for p in basket
                                 if available[bot.canonical_slug(p)] > req[bot.canonical_slug(p)])})
-    options.sort(key=lambda o: (not o['liquid'], -o['extra_net']))
+    opportunities.rank_options(bot, options)
     best = options[0] if options else None
 
     if best and best['liquid']:

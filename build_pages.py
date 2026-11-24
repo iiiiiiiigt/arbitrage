@@ -39,7 +39,7 @@ def build():
             # published catalog small.
             entry = {k: v for k, v in info.items()
                      if k not in ('demand', 'demand_signal')}
-            catalog.append(dict(name=p['name'], frost=p['value'], **entry))
+            catalog.append(dict(name=p['name'], frost=p['value'], preferred=opportunities.preferred(bot, p['name']), **entry))
     trades = []; sources = {}
     try:
         r = requests.get('https://amvgg.com/api/trades?limit=20', timeout=20)

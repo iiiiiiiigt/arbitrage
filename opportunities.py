@@ -2,6 +2,7 @@
 import time
 from collections import Counter
 import requests
+from downgrade_preferences import preferred, rank_options
 
 _next_fetch = 0
 source_status = 'Waiting for first fetch'
@@ -65,7 +66,7 @@ def exit_advice(bot, trade, observed, now=None):
                         'basket_net_after': round(trade['recv_usd'] + result['profit_usd'], 2),
                         'extra_pct': round(result['profit_usd'] / max(result['give_usd'], .01) * 100, 1),
                         'liquid': next_liquid})
-    options.sort(key=lambda o: (not o['liquid'], -o['extra_net']))
+    rank_options(bot, options)
     best = options[0] if options else None
     if best and best['liquid']:
         decision = 'Consider one more downgrade'
@@ -159,8 +160,8 @@ def research(bot, baseline, holdings, trades):
         rows.append({'name': name, 'gross': info['gross'], 'net': round(info['net'], 2),
             'frost': value, 'net_per_frost': round(ratio, 2),
             'uplift_pct': round((ratio / density - 1)*100, 1) if density else None,
-            'sales_per_day': info['sales_per_day'], 'confidence': info['confidence']})
-    rows.sort(key=lambda r: (r['sales_per_day'] <= 0, -r['net_per_frost']))
+            'preferred': preferred(bot, name), 'sales_per_day': info['sales_per_day'], 'confidence': info['confidence']})
+    rows.sort(key=lambda r: (r['sales_per_day'] < 2, -r['net_per_frost'] * (1.2 if r['preferred'] else 1)))
     available = Counter(bot.canonical_slug(p) for p in holdings)
     candidates = []
     for t in trades:

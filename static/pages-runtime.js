@@ -62,7 +62,7 @@ window.fetch=async function(input,options={}){
  if(path==='/research'){
   const base=url.searchParams.get('baseline')||'',ref=data.catalog.find(p=>key(p.name)===key(base)),hold=url.searchParams.getAll('holding');const have=hold.length?hold:[base];
   const infos=have.map(n=>data.catalog.find(p=>key(p.name)===key(n)));const density=ref?ref.net/ref.frost:null;
-  const rows=ref?data.catalog.filter(p=>p.frost<ref.frost&&p.net/p.frost>density).map(p=>({...p,net_per_frost:Math.round(p.net/p.frost*100)/100,uplift_pct:Math.round((p.net/p.frost/density-1)*1000)/10})).sort((a,b)=>b.net_per_frost-a.net_per_frost):[];
+  const rows=ref?data.catalog.filter(p=>p.frost<ref.frost&&p.net/p.frost>density).map(p=>({...p,net_per_frost:Math.round(p.net/p.frost*100)/100,uplift_pct:Math.round((p.net/p.frost/density-1)*1000)/10})).sort((a,b)=>((a.sales_per_day<2)-(b.sales_per_day<2)) || b.net_per_frost*(b.preferred?1.2:1)-a.net_per_frost*(a.preferred?1.2:1)):[];
   const next=data.trades.filter(t=>t.qualified&&affordable(t.give,have));
   result={baseline:base,baseline_priced:!!ref,candidates:rows,sell_now_net:infos.every(Boolean)?Math.round(infos.reduce((sum,p)=>sum+p.net,0)*100)/100:null,next_trades:next.slice(0,10),recommendation:next.length?'Snapshot contains possible next trades; verify availability.':'No qualifying next trade in this snapshot.',source_status:data.sources.Elvebredd,note:'Saved catalog, 30% commission assumption. Snapshot offers may have expired. Resale demand does not guarantee trades or sales.'};
  }

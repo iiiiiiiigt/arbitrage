@@ -8,6 +8,22 @@ import time
 
 
 class DemandQualificationTests(unittest.TestCase):
+    def test_preference_is_soft_and_never_overrides_liquidity(self):
+        bot = SimpleNamespace(canonical_slug=lambda n: '_'.join(sorted(n.lower().split())))
+        def option(name, gain, liquid=True):
+            return dict(receive=[name], extra_net=gain, liquid=liquid)
+        preferred = option('Fallow Deer Fly Ride', 6)
+        ordinary = option('Other', 7)
+        strongest = option('Another', 10)
+        unverified = option('Honey Badger', 100, False)
+        rows = [ordinary, preferred, strongest, unverified]
+        opportunities.rank_options(bot, rows)
+        self.assertEqual(rows, [strongest, preferred, ordinary, unverified])
+        self.assertEqual(preferred['extra_net'], 6)
+        self.assertTrue(preferred['preferred'])
+        self.assertFalse(ordinary['preferred'])
+        self.assertEqual(len(rows), 4)
+
     def test_amvgg_high_demand_is_not_cash_sales(self):
         self.assertFalse(cash_demand_ok({'reliable':True,'demand_signal':{'source':'amvgg_rating','ok':True},'demand':{'median_daily':None}}))
 
