@@ -44,13 +44,12 @@ def build():
         row, reason = bot._evaluate_trade(t, give)
         if row:
             row['qualified'] = True
-            row['exit_advice'] = opportunities.exit_advice(bot, row, trades)
         else:
             near = bot.get_near_misses([t], give)
             if not near:
                 continue
             row = near[0]; row['qualified'] = False
-        rows.append(bot.with_demand(row))
+        rows.append(opportunities.assess_demand(bot, row, trades, row['qualified']))
     data = {'generated_at': time.time(), 'sources': sources,
             'pets': grouped, 'catalog': catalog, 'trades': rows}
     (OUT / 'snapshot.json').write_text(json.dumps(data, ensure_ascii=True), encoding='utf-8')

@@ -127,18 +127,21 @@ def find():
 
 @app.route("/status")
 def status():
-    from opportunities import exit_advice
+    from opportunities import assess_demand
     with LOCK:
         elapsed = time.time() - STATE["started_at"] if STATE["started_at"] else 0
         observed = list(STATE['trades'].values())
-        results = [dict(t, exit_advice=exit_advice(bot, t, observed)) for t in STATE['results']]
-        targets = [dict(t, exit_advice=exit_advice(bot, t, observed)) for t in STATE['target_trades']]
+        evaluated = [assess_demand(bot, t, observed, True) for t in STATE['results']]
+        results = [t for t in evaluated if t['qualified']]
+        reviews = [t for t in evaluated if not t['qualified']]
+        reviews += [assess_demand(bot, t, observed, False) for t in STATE['near_misses']]
+        targets = [assess_demand(bot, t, observed, True) for t in STATE['target_trades']]
         return jsonify({
             "running": STATE["running"], "inventory": sorted(STATE["inventory"]),
             "target_pet": STATE["target_pet"], "total_fetches": STATE["total_fetches"],
             "total_new": STATE["total_new"], "last_new": STATE["last_new"],
             "last_batch": STATE["last_batch"], "trade_count": len(STATE["trades"]),
-            "results": [bot.with_demand(t) for t in results], "near_misses": [bot.with_demand(t) for t in STATE["near_misses"]],
+            "results": results, "near_misses": reviews,
             "target_trades": [bot.with_demand(t) for t in targets], "stats": STATE["stats"],
             "elapsed": round(elapsed, 1), "rate_limited": STATE["rate_limited"],
             "last_fetch_age": round(time.time() - STATE["last_fetch_at"], 1) if STATE["last_fetch_at"] else None,

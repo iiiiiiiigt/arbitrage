@@ -44,14 +44,13 @@ def collect():
                 row, _ = bot._evaluate_trade(trade, give)
                 if row:
                     row['qualified'] = True
-                    row['exit_advice'] = opportunities.exit_advice(bot, row, observed)
                 else:
                     near = bot.get_near_misses([trade], give)
                     if not near:
                         continue
                     row = near[0]
                     row['qualified'] = False
-                rows.append(bot.with_demand(row))
+                rows.append(opportunities.assess_demand(bot, row, observed, row['qualified']))
             with lock:
                 state.update(generated_at=now, trades=rows,
                              sources={'collector': 'Running' if status==200 else 'Upstream unavailable / backing off',

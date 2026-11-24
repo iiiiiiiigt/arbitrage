@@ -61,8 +61,19 @@ def exit_advice(bot, trade, observed, now=None):
         decision = 'Insufficient evidence — review before taking this trade'
         reason = 'Resale demand is low or missing, and no qualifying liquid follow-up was observed. The displayed gain may be difficult to realize.'
     return {'decision': decision, 'reason': reason, 'sell_now_net': trade['recv_usd'],
+            'demand_passed': bool(liquid or (best and best['liquid'])),
             'received_demand': details, 'recent_wanted_offers': len(wanted),
             'next_step': best, 'note': 'Sellability requires a verified seven-day median of at least 2 sales/day for each received variant. Missing history does not pass this check. Requests in the last 2 minutes indicate interest, not completed trades. One-step estimates include a 30% commission assumption.'}
+
+def assess_demand(bot, row, observed, margin_passed):
+    """A price margin alone cannot qualify an offer as worth considering."""
+    advice = exit_advice(bot, row, observed)
+    row = dict(row, exit_advice=advice, margin_qualified=margin_passed,
+               qualified=bool(margin_passed and advice['demand_passed']))
+    if margin_passed and not advice['demand_passed']:
+        missing = [d['name'] for d in advice['received_demand'] if d['median_daily'] is None]
+        row['reason'] = ('Demand history unavailable: ' + ', '.join(missing)) if missing else 'Received pets do not pass the resale demand check.'
+    return bot.with_demand(row)
 
 def elvebredd_trades():
     global _next_fetch, source_status
