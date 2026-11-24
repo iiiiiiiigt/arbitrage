@@ -85,9 +85,9 @@ searches allow up to 20 pages and detect pagination that makes no progress.
 ### Browser Discord alerts
 
 Open **Discord deal alerts** on the dashboard. Enter a Discord webhook URL,
-minimum dollar gain and percentage gain, optionally your numeric Discord user
+minimum percentage gain, optionally your numeric Discord user
 ID for a direct mention, enable alerts and save. Use **Send test** to check the
-channel. Both thresholds and existing dashboard demand/mode filters must pass.
+channel. The percentage threshold and existing dashboard demand/mode filters must pass. Alerts calculate the extra USD as received net resale value minus given net resale value; old saved dollar thresholds are ignored.
 Matching offers already present when enabled may also alert. Each listing is
 suppressed for seven days after an attempted delivery; HTTP errors with known
 failure allow retries, while ambiguous network failures are not resent to avoid
