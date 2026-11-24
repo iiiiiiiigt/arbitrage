@@ -1,0 +1,9 @@
+amvgg_cookies.json
+proxies.txt
+.env
+.env.*
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.log
