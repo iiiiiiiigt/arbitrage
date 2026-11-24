@@ -121,9 +121,9 @@ def find():
         target    = request.form.get("target_pet", "").strip()
     except Exception: inventory, target = set(), ""
     if not inventory:
-        return render_template("results.html", error="Select at least one pet.", inventory=[], target="")
+        return render_template("results_clean.html", error="Select at least one pet.", inventory=[], target="")
     start_scanner(inventory, target_pet=target)
-    return render_template("results.html", inventory=sorted(inventory), target=target)
+    return render_template("results_clean.html", inventory=sorted(inventory), target=target)
 
 @app.route("/status")
 def status():

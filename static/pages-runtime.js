@@ -32,7 +32,7 @@ window.fetch=async function(input,options={}){
 document.addEventListener('DOMContentLoaded',()=>{
  const form=document.getElementById('search-form');if(form)form.addEventListener('submit',e=>{e.preventDefault();location.href='./dashboard.html'});
  // Static hosting never accepts authenticated trades or collects cookies.
- document.addEventListener('click',e=>{const b=e.target.closest('button');if(!b||!/^Accept/.test(b.textContent.trim()))return;const card=b.closest('.trade');const link=card?.querySelector('a[target="_blank"]');if(link){e.preventDefault();e.stopImmediatePropagation();window.open(link.href,'_blank','noopener')}},true);
+ document.addEventListener('click',e=>{const b=e.target.closest('button');if(!b||!/^Accept/.test(b.textContent.trim()))return;const card=b.closest('.trade, .deal');const link=card?.querySelector('a[target="_blank"]');if(link){e.preventDefault();e.stopImmediatePropagation();window.open(link.href,'_blank','noopener')}},true);
  ready.then(()=>updateStatus()).catch(()=>{document.getElementById('pages-status').textContent='Snapshot failed to load. Reload to retry.'});
  function updateStatus(){document.getElementById('pages-status').textContent='GitHub Pages • trade snapshot: '+new Date(snapshot.generated_at*1000).toLocaleString()+'. Scheduled refresh about every 5 minutes (GitHub may delay jobs). Trade acceptance opens the source website. Catalog prices are saved estimates.'}
  setInterval(()=>loadSnapshot().then(updateStatus).catch(console.error),60000);

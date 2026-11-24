@@ -58,15 +58,15 @@
         .value { color: #ff9900; font-weight: bold; font-size: 13px; min-height: 18px; }
         .value.empty { color: #444; }
     </style>
-<meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="/static/theme.css">
+<meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="/static/desk.css">
 </head>
 <body>
     <div class="container">
-        <div class="brand">TRADE DESK / ADOPT ME</div><h1>Your inventory. Better opportunities.</h1>
-        <p class="subtitle">Click a pet to select it. Use F/R/N/M buttons to specify the variant. Click again to deselect.</p>
+        <nav><a class="logo" href="/">◈ TRADE DESK</a><span class="nav-note">ADOPT ME / MARKET RESEARCH</span></nav><div class="brand">STEP 01 / YOUR INVENTORY</div><h1>What are you trading?</h1>
+        <p class="subtitle">Search for pets you own, select their variants, then find opportunities. F = Fly · R = Ride · N = Neon · M = Mega.</p>
 
         <form method="POST" action="/find" id="search-form">
-            <input type="hidden" name="target_pet" id="focus-hidden"><section class="focus-panel" id="focus-picker"></section>
+            <input type="hidden" name="target_pet" id="focus-hidden"><details class="toolbox"><summary>Focus on one pet <span>Optional — you can do this later</span></summary><section id="focus-picker"></section></details>
             <input type="hidden" name="inventory" id="inventory-input">
             <div class="toolbar">
                 <input type="text" id="search" class="search-box" placeholder="Search pets... (e.g. frost, bat, shadow)">
