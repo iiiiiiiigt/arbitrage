@@ -125,7 +125,7 @@ for attempt in range(3):
                 "sort":     {"price": "asc"},
             },
             proxies={"http": proxy, "https": proxy} if proxy else None,
-            timeout=20, verify=False,
+            timeout=20, verify=True,
         )
         if r.status_code == 200:
             data = r.json()
