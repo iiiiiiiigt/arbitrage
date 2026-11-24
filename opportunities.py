@@ -16,6 +16,7 @@ def exit_advice(bot, trade, observed, now=None):
         info = bot.pet_price_info(name)
         details.append({'name': name, 'quantity': quantity,
                         'sales_per_day': info.get('sales_per_day', 0),
+                        'median_daily': info.get('demand', {}).get('median_daily'),
                         'reliable': info.get('reliable', False)})
     liquid = bool(details) and all(p['reliable'] and p['sales_per_day'] >= 2 for p in details)
     options = []
@@ -61,7 +62,7 @@ def exit_advice(bot, trade, observed, now=None):
         reason = 'Resale demand is low or missing, and no qualifying liquid follow-up was observed. The displayed gain may be difficult to realize.'
     return {'decision': decision, 'reason': reason, 'sell_now_net': trade['recv_usd'],
             'received_demand': details, 'recent_wanted_offers': len(wanted),
-            'next_step': best, 'note': 'Saved market-wide sales data is not your sale probability. Requests in the last 2 minutes indicate interest, not completed trades. One-step estimates include a 30% commission assumption.'}
+            'next_step': best, 'note': 'Sellability requires a verified seven-day median of at least 2 sales/day for each received variant. Missing history does not pass this check. Requests in the last 2 minutes indicate interest, not completed trades. One-step estimates include a 30% commission assumption.'}
 
 def elvebredd_trades():
     global _next_fetch, source_status

@@ -1,5 +1,6 @@
 import requests, json, re, os, time, random
 from pathlib import Path
+from demand import weekly_demand
 
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0 Safari/537.36"
 BASE_DIR = Path(__file__).resolve().parent
@@ -144,6 +145,7 @@ def pet_price_info(name):
         gross = float(record.get("price_median") or record.get("price_low") or 0)
         source = "current listing"
     reliable = gross > 0 and PRICE_CONFIDENCE.get(confidence, 0) >= MIN_PRICE_CONFIDENCE
+    demand = weekly_demand(record)
     return {
         "priced": gross > 0,
         "reliable": reliable,
@@ -152,7 +154,8 @@ def pet_price_info(name):
         "confidence": confidence,
         "source": source,
         "catalog_name": record.get("name"),
-        "sales_per_day": float(record.get("avg_daily_sales") or 0),
+        "sales_per_day": demand['median_daily'] or 0,
+        "demand": demand,
         "listing_count": int(record.get("count") or 0),
     }
 
@@ -161,17 +164,11 @@ def pet_is_pricable(name):
 
 def with_demand(trade):
     """Attach exact-variant saved demand without interpreting failed polls as zero sales."""
-    import math
     demand = {}
     for name in set(trade.get('give', []) + trade.get('receive', [])):
         record, _ = _lookup(name)
-        try:
-            daily = float((record or {}).get('avg_daily_sales') or 0)
-        except (ValueError, TypeError):
-            daily = 0
-        known = math.isfinite(daily) and daily > 0
-        demand[name] = {'daily_average': round(daily, 2) if known else None,
-                        'weekly_estimate': round(daily * 7, 2) if known else None}
+        metric = weekly_demand(record)
+        demand[name] = metric
     return dict(trade, item_demand=demand)
 
 # ── Conversions ───────────────────────────────────────────────────────

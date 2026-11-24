@@ -189,6 +189,7 @@ async def run():
 
     print(f"\n2. Fetching demand for {len(variant_samples):,} unique variants...")
     demand_data = {}
+    demand_history = {}
     pool = DemandClientPool(proxies, size=50)
 
     async def demand_worker(key, sid):
@@ -198,6 +199,7 @@ async def run():
             r = await client.get(API_DEMAND.format(sid))
             if r.status_code == 200:
                 s = r.json().get("data", {}).get("statistics", [])
+                demand_history[key] = s
                 demand_data[key] = round(sum(x["count"] for x in s) / len(s), 2) if s else 0.0
             elif r.status_code == 429:
                 replace = True  # Rotate this proxy away immediately
@@ -268,7 +270,10 @@ async def run():
             "count":            len(prices),
             "n_with_sales":     len(nz),
             "confidence":       conf,
-            "avg_daily_sales":  demand_data.get(key, 0.0)
+            "avg_daily_sales":  demand_data.get(key, 0.0),
+            "demand_raw_statistics": demand_history.get(key, []),
+            "demand_product_id": g['sample_id'],
+            "demand_scope": 'unverified_product_statistics'
         }
         
     with open(CATALOG_PATH, "w") as f:

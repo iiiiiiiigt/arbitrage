@@ -11,7 +11,11 @@ python app.py
 
 Open http://127.0.0.1:5000. Keep this local application private: authenticated trade actions use your local session. Cookies and proxy credentials are intentionally excluded from Git.
 
-Catalog prices are saved estimates, not executable quotes. Calculations assume a 30% seller commission. Demand data is market-wide and may be stale. Trade acceptance is not confirmation of an in-game exchange.
+Catalog prices are saved estimates, not executable quotes. Calculations assume a 30% seller commission. Trade acceptance is not confirmation of an in-game exchange.
+
+Demand scoring uses the median of daily sales totals for the last seven complete UTC days for the exact pet variant. The displayed weekly count is their sum. Confirmed zero-sale days count; missing dates, stale history, and unverified listing-level statistics do not establish demand. The existing catalog averages cannot be converted into medians. StarPets history acquisition remains unverified: the scraper preserves raw product statistics for inspection but does not label them market-wide daily sales.
+
+Verified catalog records must supply `demand_scope: "variant_daily_totals"` and `daily_sales: [{"date": "YYYY-MM-DD", "count": 10}, ...]`, one total per day. Only set that scope after verifying the source covers all sales of that exact variant. Unknown demand cannot satisfy the sellability threshold.
 
 ## GitHub Pages
 
