@@ -10,6 +10,24 @@ import scrape_starpets
 
 
 class HistoryTests(unittest.TestCase):
+    def test_transport_failure_redacts_credentials(self):
+        with tempfile.TemporaryDirectory() as temp:
+            collector = HistoryCollector(Path(temp) / 'history.json')
+            with patch.object(collector.session, 'request', side_effect=RuntimeError('secret-proxy-password')):
+                with self.assertRaises(HistoryError) as error:
+                    collector.request('GET', '/test')
+            self.assertNotIn('secret-proxy-password', str(error.exception))
+            self.assertEqual(error.exception.delay, 900)
+
+    def test_rate_limit_preserves_retry_after(self):
+        with tempfile.TemporaryDirectory() as temp:
+            collector = HistoryCollector(Path(temp) / 'history.json')
+            response = type('Response', (), {'status_code': 429, 'headers': {'Retry-After': '1800'}})()
+            with patch.object(collector.session, 'request', return_value=response):
+                with self.assertRaises(HistoryError) as error:
+                    collector.request('GET', '/test')
+            self.assertEqual(error.exception.delay, 1800)
+
     def test_errors_and_missing_schema_never_become_zero(self):
         for payload in [{}, {'data': None}, {'error': 'limited'}, {'data': {'statistics': [{'day': '2026-11-23', 'count': -1}]}}]:
             with self.assertRaises(HistoryError):

@@ -14,6 +14,31 @@ from pathlib import Path
 
 import requests
 
+TRANSPORT_CONFIG = Path(__file__).resolve().parent / '.live' / 'starpets-transport.json'
+
+
+def history_session(config_path=TRANSPORT_CONFIG):
+    """Local-only transport settings; never copy proxy credentials into public data."""
+    if not Path(config_path).exists():
+        return requests.Session()
+    config = json.loads(Path(config_path).read_text(encoding='utf-8'))
+    from curl_cffi import requests as browser_requests
+    session = browser_requests.Session(impersonate='chrome', trust_env=False)
+    proxy_file = Path(config['proxy_file'])
+    if not proxy_file.is_absolute():
+        proxy_file = Path(__file__).resolve().parent / proxy_file
+    with proxy_file.open(encoding='utf-8') as source:
+        entries = (line.strip() for line in source if line.strip())
+        index = int(config.get('proxy_index', 0))
+        if index < 0:
+            raise ValueError('Proxy index must be nonnegative')
+        proxy = next((line for i, line in enumerate(entries) if i == index), '')
+    if not proxy:
+        raise ValueError('Configured StarPets proxy file is empty')
+    proxy = proxy if '://' in proxy else 'http://' + proxy
+    session.proxies = {'http': proxy, 'https': proxy}
+    return session
+
 BASE = 'https://market.apineural.com'
 PATH = Path(__file__).resolve().parent / 'data' / 'starpets_sales_history.json'
 TTL = 6 * 3600
@@ -65,7 +90,7 @@ class HistoryCollector:
         self.started = False
         self.retry_at = 0
         self.status = 'Sales history has not been checked'
-        self.session = requests.Session()
+        self.session = history_session()
         self.session.headers.update({'Accept': 'application/json', 'Origin': 'https://starpets.gg', 'Referer': 'https://starpets.gg/'})
         self.next_request = 0
 
@@ -106,7 +131,9 @@ class HistoryCollector:
                     delay = 900
                 raise HistoryError(f'StarPets HTTP {response.status_code}; sales check paused', delay)
             return response.json()
-        except (requests.RequestException, ValueError) as exc:
+        except HistoryError:
+            raise
+        except Exception as exc:
             raise HistoryError(f'StarPets unavailable ({type(exc).__name__})') from exc
 
     def fetch(self, key, record):

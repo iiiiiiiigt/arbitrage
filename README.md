@@ -42,3 +42,18 @@ If live data stops, Pages labels the last data offline. Use "Use snapshots" to s
 ```sh
 python -m unittest test_pricing.py
 ```
+
+
+### Optional local StarPets transport
+
+The targeted sales-history worker can use a Chrome-compatible HTTPS client and
+one fixed proxy from your local proxy file. Install `requirements.txt`, then create
+`.live/starpets-transport.json` containing
+`{"proxy_file": "proxies.txt", "proxy_index": 1}` (index is zero-based).
+Both configuration and proxy credentials stay ignored by Git. No proxy rotation
+or automatic retry storm is used: requests remain spaced, history is cached for
+six hours, and errors pause checks for at least 15 minutes. Remove the local
+configuration to use the ordinary direct client. This only changes the Python
+history worker, not your browser connection or the GitHub Actions environment.
+A successful check is observed sales for enumerated exact-variant product IDs,
+not a promise of exhaustive marketplace coverage.
