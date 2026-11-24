@@ -1,5 +1,6 @@
 """Build the existing Flask UI as a credential-free static dashboard."""
 import json
+import re
 import shutil
 import time
 from pathlib import Path
@@ -54,6 +55,10 @@ def build():
             html = html.replace('"/static/', '"./static/').replace('href="/"', 'href="./index.html"')
             html = html.replace('<head>', '<head><script src="./static/pages-runtime.js"></script>')
             html = html.replace('<body>', '<body><div class="help-tip" id="pages-status">GitHub Pages snapshot dashboard — loading…</div>')
+            html = re.sub(r'<div class="help-tip">.*?</div>',
+                '<div class="help-tip">Trade snapshots refresh through GitHub Actions, scheduled about every five minutes. Jobs may be delayed. Prices come from the saved catalog with an assumed 30% commission. Accept opens the source marketplace; update your inventory after completing an exchange.</div>',
+                html, flags=re.S)
+            html = html.replace('Scanning...', 'Snapshot loaded').replace('>LIVE</div>', '>SNAPSHOT</div>')
             (OUT / name).write_text(html, encoding='utf-8')
     print(f'Built Pages: {len(rows)} trade rows, {len(catalog)} priced variants')
 

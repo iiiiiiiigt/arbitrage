@@ -63,7 +63,7 @@
             <div class="stat"><div class="label">Unique Trades</div><div class="value" id="trade-count">0</div></div>
             <div class="stat"><div class="label">Profitable</div><div class="value big" id="result-count">0</div></div>
             <div class="stat"><div class="label">Elapsed</div><div class="value" id="elapsed">0s</div></div>
-            <div class="live" id="live-badge">LIVE</div>
+            <div class="live" id="live-badge">SNAPSHOT</div>
             <button class="stop-btn" id="stop-btn" onclick="stopScanner()">Stop</button>
         </div>
 
@@ -78,11 +78,7 @@
         <div id="results-section"></div>
         <div id="near-miss-section"></div>
 
-        <div class="help-tip">
-            <strong>How this works:</strong> The scanner keeps fetching the amvgg trade feed every ~2 seconds and accumulating unique trades.
-            Opportunities must clear $1 and 5% estimated net gain. Values use the saved catalog and assume a 30% seller commission. Focus offers may require additional pets; check the complete give side. Near misses include missing prices and small margins.
-            Accept removes given pets and adds received pets to your inventory, then re-scores everything.
-        </div>
+        <div class="help-tip">Trade snapshots refresh through GitHub Actions, scheduled about every five minutes. Jobs may be delayed. Prices come from the saved catalog with an assumed 30% commission. Accept opens the source marketplace; update your inventory after completing an exchange.</div>
     </div>
 
     <div class="toast" id="toast">Inventory updated ✓</div>
@@ -118,7 +114,7 @@ async function poll() {
 function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({"&": "&amp;","<": "&lt;",">": "&gt;",'"': "&quot;","'": "&#39;"}[c])); }
 
 function render(data) {
-    document.getElementById("status-text").textContent = data.rate_limited ? "Rate limited — slowing down" : data.running ? "Scanning..." : "Stopped";
+    document.getElementById("status-text").textContent = data.rate_limited ? "Rate limited — slowing down" : data.running ? "Snapshot loaded" : "Stopped";
     document.getElementById("total-fetches").textContent = data.total_fetches;
     document.getElementById("trade-count").textContent   = data.trade_count;
     document.getElementById("result-count").textContent  = data.results.length;
