@@ -31,3 +31,10 @@ jobs:
           path: docs
       - uses: actions/deploy-pages@v4
         id: deployment
+        continue-on-error: true
+      - name: Retry deployment after artifact indexing
+        if: steps.deployment.outcome == 'failure'
+        run: sleep 15
+      - uses: actions/deploy-pages@v4
+        if: steps.deployment.outcome == 'failure'
+        id: deployment_retry
