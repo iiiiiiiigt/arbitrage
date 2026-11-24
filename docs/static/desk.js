@@ -218,8 +218,8 @@ if($('mode-toggle'))$('mode-toggle').onclick=async()=>{
 function schedule(ms){clearTimeout(pollTimer);nextAt=Date.now()+ms;pollTimer=setTimeout(poll,ms);updateStamp()}
 async function poll(){
  if(stopped)return;
- if(document.hidden){schedule(2000);return}      // don't poll a tab nobody is looking at
- try{const r=await fetch('/status');if(!r.ok)throw Error();state=screenPrices(await r.json());lastUpdate=Date.now();render()}
+ if(document.hidden&&!window.dealAlerts?.enabled()){schedule(2000);return}      // don't poll a tab nobody is looking at
+ try{const r=await fetch('/status');if(!r.ok)throw Error();state=screenPrices(await r.json());lastUpdate=Date.now();render();window.dealAlerts?.consider(state)}
  catch{$('connection').textContent='Connection lost · retrying'}
  if(!stopped)schedule(2000);else updateStamp();
 }

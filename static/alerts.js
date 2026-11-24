@@ -1,0 +1,31 @@
+(()=>{'use strict';
+const KEY='trade_desk_alerts_v1',SEEN='trade_desk_alerts_sent_v1',$=id=>document.getElementById(id);
+const read=(key,fallback)=>{try{return JSON.parse(localStorage.getItem(key))||fallback}catch{return fallback}};
+let config=read(KEY,{}),busy=false,nextAt=0;
+const status=text=>{$('alert-status').textContent=text};
+function validUrl(raw){try{const u=new URL(raw);if(u.protocol!=='https:'||u.hostname!=='discord.com'||u.username||u.password||u.port||!/^\/api(?:\/v10)?\/webhooks\/\d+\/[A-Za-z0-9_-]+$/.test(u.pathname))return null;u.search='?wait=true';u.hash='';return u.href}catch{return null}}
+function enabled(){return !!(config.enabled&&validUrl(config.url))}
+function show(){ $('alert-url').value=config.url||'';$('alert-dollars').value=config.dollars??10;$('alert-percent').value=config.percent??20;$('alert-user').value=config.user||'';$('alert-enabled').checked=!!config.enabled;status(enabled()?'Alerts enabled · waiting for qualifying live deals':'Alerts disabled')}
+function settings(){const url=validUrl($('alert-url').value.trim()),dollars=Number($('alert-dollars').value),percent=Number($('alert-percent').value),user=$('alert-user').value.trim();if(!url)throw Error('Enter a valid discord.com webhook URL.');if(!Number.isFinite(dollars)||!Number.isFinite(percent)||dollars<0||percent<0)throw Error('Enter nonnegative dollar and percentage thresholds.');if(user&&!/^\d{15,22}$/.test(user))throw Error('Enter your numeric Discord user ID, or leave it blank.');return{url,dollars,percent,user,enabled:$('alert-enabled').checked}}
+const amount=n=>'$'+Number(n).toFixed(2),clip=s=>String(s).slice(0,1000);
+function payload(t,c){const mention=c.user?'<@'+c.user+'> ':'';if(!t)return{content:mention+'Trade Desk test: your webhook is connected.',allowed_mentions:{parse:[],users:c.user?[c.user]:[]}};
+ const isElve=String(t.trade_id).startsWith('elvebredd:'),url=isElve?'https://elvebredd.com/trade-center':'https://amvgg.com/trade/'+encodeURIComponent(t.trade_id),pct=100*t.profit_usd/t.give_usd;
+ return{content:mention+'A deal matches your margin settings.',allowed_mentions:{parse:[],users:c.user?[c.user]:[]},embeds:[{title:'Estimated +'+amount(t.profit_usd)+' ('+pct.toFixed(1)+'%)',url,color:11726798,fields:[{name:'You give · '+amount(t.give_usd)+' net',value:clip(t.give.join('\n'))},{name:'You receive · '+amount(t.recv_usd)+' net',value:clip(t.receive.join('\n'))},{name:'Frost value',value:String(t.give_frost??'?')+' → '+String(t.recv_frost??'?')},{name:'Resale / next downgrade',value:clip(t.exit_advice?.decision||'Passed dashboard demand checks')},{name:isElve?'Elvebredd listing':'AMVGG listing',value:clip(String(t.trade_id)+' · @'+String(t.author||'unknown'))}],footer:{text:'Estimates after 30% selling fee, before withdrawal fees. Verify prices and offer availability.'}}]}}
+function seen(){const entries=read(SEEN,{}),cutoff=Date.now()-7*86400000;return Object.fromEntries(Object.entries(entries).filter(([,v])=>v>cutoff).slice(-2000))}
+function idFor(t,c){return new URL(c.url).pathname.split('/').slice(-2,-1)[0]+':'+t.trade_id}
+async function send(t,c){const id=t?idFor(t,c):null,entries=seen();if(id&&entries[id])return;
+ // An uncertain network result must not immediately resend a possibly delivered ping.
+ if(id){entries[id]=Date.now();localStorage.setItem(SEEN,JSON.stringify(entries))}
+ try{const r=await fetch(c.url,{method:'POST',credentials:'omit',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload(t,c)),signal:AbortSignal.timeout(12000)});
+ if(r.status===429){const d=await r.json().catch(()=>({}));nextAt=Date.now()+Math.max(1,Number(d.retry_after)||Number(r.headers.get('Retry-After'))||30)*1000;if(id){const entries=seen();delete entries[id];localStorage.setItem(SEEN,JSON.stringify(entries))}status('Discord rate limit · automatically retries after its cooldown');return}
+ if(!r.ok){if(id){const entries=seen();delete entries[id];localStorage.setItem(SEEN,JSON.stringify(entries))}nextAt=Date.now()+60000;if([400,401,403,404].includes(r.status)){config.enabled=false;localStorage.setItem(KEY,JSON.stringify(config));$('alert-enabled').checked=false}status('Discord rejected the alert (HTTP '+r.status+'). Check the webhook settings.');return}
+ const reset=Number(r.headers.get('X-RateLimit-Reset-After'))||0;nextAt=Date.now()+Math.max(3,r.headers.get('X-RateLimit-Remaining')==='0'?reset:0)*1000;status(t?'Alert sent · '+amount(t.profit_usd)+' estimated gain':'Test sent · check your Discord channel');
+ }catch{nextAt=Date.now()+30000;status('Delivery could not be confirmed. Check Discord; this deal will not be automatically resent to avoid duplicate pings.')}}
+async function dispatch(t,c){if(busy||Date.now()<nextAt)return;busy=true;try{if(navigator.locks)await navigator.locks.request('trade-desk-alert-send',{ifAvailable:true},async lock=>{if(lock)await send(t,c)});else await send(t,c)}finally{busy=false}}
+function consider(data){if(!enabled()||!data.running||data.rate_limited||Date.now()<nextAt)return;if(data.connection_label&&!data.connection_label.startsWith('Live ·'))return;if(Number.isFinite(data.last_fetch_age)&&data.last_fetch_age>30)return;const sent=seen();const candidates=(data.results||[]).filter(t=>t.qualified&&!t.unknown?.length&&t.preferred_receive!==undefined&&Number.isFinite(t.profit_usd)&&t.give_usd>0&&t.profit_usd>=config.dollars&&100*t.profit_usd/t.give_usd>=config.percent&&!sent[idFor(t,config)]).sort((a,b)=>b.profit_usd-a.profit_usd);if(candidates.length)dispatch(candidates[0],{...config})}
+$('alert-save').onclick=()=>{try{config=settings();localStorage.setItem(KEY,JSON.stringify(config));nextAt=0;show()}catch(e){status(e.message)}};
+$('alert-test').onclick=()=>{try{const c=settings();dispatch(null,c)}catch(e){status(e.message)}};
+$('alert-clear').onclick=()=>{config={};localStorage.removeItem(KEY);show();status('Webhook removed from this browser')};
+window.addEventListener('storage',e=>{if(e.key===KEY){config=read(KEY,{});show()}});
+window.dealAlerts={enabled,consider};show();
+})();

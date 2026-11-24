@@ -80,3 +80,19 @@ Network failures pause globally for 15 seconds initially, increasing up to five
 minutes; HTTP 429 starts at 60 seconds and any longer Retry-After wins. Successful
 history is retained, and a successful retry clears that item's error. Catalog
 searches allow up to 20 pages and detect pagination that makes no progress.
+
+
+### Browser Discord alerts
+
+Open **Discord deal alerts** on the dashboard. Enter a Discord webhook URL,
+minimum dollar gain and percentage gain, optionally your numeric Discord user
+ID for a direct mention, enable alerts and save. Use **Send test** to check the
+channel. Both thresholds and existing dashboard demand/mode filters must pass.
+Matching offers already present when enabled may also alert. Each listing is
+suppressed for seven days after an attempted delivery; HTTP errors with known
+failure allow retries, while ambiguous network failures are not resent to avoid
+double pings. Discord rate limits are respected. A failure status is visible.
+Settings stay in this browser's local storage; the webhook is sent directly to
+Discord, never to the collector or GitHub. Keep the dashboard open, scanning,
+and the device awake. Background browser throttling can delay checks. Snapshots
+and offline feeds do not trigger alerts. Remove webhook clears saved settings.

@@ -7,7 +7,7 @@ function validFeed(value){try{let u=new URL(value);const embedded=new URLSearchP
 if(linkFeed&&validFeed(linkFeed)){liveBase=validFeed(linkFeed);localStorage.setItem('live_feed_url',liveBase);localStorage.setItem('feed_mode','live');history.replaceState(null,'',location.pathname+location.search)}
 if(liveBase)liveState='Connecting to live feed…';
 async function refreshLive(){
- if(!liveBase||liveBusy||document.hidden)return;liveBusy=true;
+ if(!liveBase||liveBusy||(document.hidden&&!window.dealAlerts?.enabled()))return;liveBusy=true;
  try{const r=await nativeFetch(liveBase+'/feed',{cache:'no-store',credentials:'omit',signal:AbortSignal.timeout(8000)});if(!r.ok)throw Error();const d=await r.json();if(!Array.isArray(d.trades)||!Number.isFinite(d.generated_at)||!d.sources)throw Error();
   if(Date.now()/1000-d.generated_at>30)throw Error();
   snapshot={...snapshot,...d};liveState='Live · '+(d.sources.collector||'Connected');
