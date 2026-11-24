@@ -32,7 +32,7 @@ async function loadSnapshot(){
  return snapshot;
 }
 const ready=(async()=>{
- if(!liveBase&&localStorage.getItem('feed_mode')!=='snapshot'){
+ if(!linkFeed&&localStorage.getItem('feed_mode')!=='snapshot'){
   try{const r=await nativeFetch('./live-config.json',{cache:'no-cache'});if(r.ok){const c=await r.json();const u=validFeed(c.feed_url);if(u){liveBase=u;liveState='Connecting to live feed…';localStorage.setItem('live_feed_url',u)}}}catch{}
  }
  return loadSnapshot();
