@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html>
-<head><script src="./static/pages-runtime.js?v=856aba0b5c75"></script>
+<head><script src="./static/pages-runtime.js?v=13859d49bef1"></script>
     <title>Adopt Me Trade Bot</title>
     <style>
         * { box-sizing: border-box; }
@@ -72,6 +72,7 @@
                 <input type="text" id="search" class="search-box" placeholder="Search pets... (e.g. frost, bat, shadow)">
                 <div class="inventory-bar">
                     <span>Inventory: <span class="inventory-count" id="inv-count">0</span> pets</span>
+                    <label class="mode-toggle" title="Ignore your inventory and evaluate every offer on the feed"><input type="checkbox" id="mode-all" name="mode" value="all"> Scan all pets</label>
                     <button type="submit" class="submit" id="submit-btn" disabled>Find Trades</button>
                 </div>
             </div>
@@ -10584,7 +10585,9 @@ function saveAndRefresh() {
     const inv = getInventory();
     localStorage.setItem(STORAGE_KEY, JSON.stringify(inv));
     document.getElementById("inv-count").textContent = inv.length;
-    document.getElementById("submit-btn").disabled = inv.length === 0;
+    // all-pets mode works with an empty inventory
+    const allMode = document.getElementById("mode-all") && document.getElementById("mode-all").checked;
+    document.getElementById("submit-btn").disabled = inv.length === 0 && !allMode;
 }
 
 // ── Attach to each card ────────────────────────────────────────────
@@ -10655,6 +10658,16 @@ document.getElementById("search").addEventListener("input", (e) => {
 });
 
 // ── Submit ────────────────────────────────────────────────────────
+// Persist the all-pets preference so it survives a reload
+const allBox = document.getElementById("mode-all");
+if (allBox) {
+    allBox.checked = localStorage.getItem("adoptme_mode") === "all";
+    allBox.addEventListener("change", () => {
+        localStorage.setItem("adoptme_mode", allBox.checked ? "all" : "inventory");
+        saveAndRefresh();
+    });
+    saveAndRefresh();
+}
 document.getElementById("search-form").addEventListener("submit", () => {
     document.getElementById("inventory-input").value = JSON.stringify(getInventory());
 });

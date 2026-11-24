@@ -40,19 +40,22 @@ const ready=(async()=>{
 ready.then(refreshLive).catch(console.error);
 window.fetch=async function(input,options={}){
  const url=new URL(String(input),location.href),path=url.pathname;
- if(!['/pet-options','/status','/research','/set_target','/stop','/update_inventory','/accept'].includes(path))return nativeFetch(input,options);
+ if(!['/pet-options','/status','/research','/set_target','/set_mode','/stop','/update_inventory','/accept'].includes(path))return nativeFetch(input,options);
  const s=await ready;const data=snapshot||s;const form=new URLSearchParams(options.body||'');let result={ok:true};
  if(path==='/pet-options')result=data.pets;
  if(path==='/set_target')localStorage.setItem('pages_target',form.get('target_pet')||'');
+ if(path==='/set_mode'){const m=form.get('mode')==='all'?'all':'inventory';localStorage.setItem('pages_mode',m);result={ok:true,mode:m};}
  if(path==='/stop')active=false;
  if(path==='/update_inventory')localStorage.setItem('adoptme_inventory',form.get('inventory')||'[]');
  if(path==='/accept')result={success:false,error:'Open the source website to accept'};
  if(path==='/status'){
-  const inv=inventoryNames(),target=localStorage.getItem('pages_target')||'',owned=data.trades.filter(t=>affordable(t.give,inv));
+  const inv=inventoryNames(),target=localStorage.getItem('pages_target')||'';
+  const mode=localStorage.getItem('pages_mode')==='all'?'all':'inventory';
+  const owned=mode==='all'?data.trades:data.trades.filter(t=>affordable(t.give,inv));
   const qual=owned.filter(t=>t.qualified);
   const summary=rows=>{const c=rows.filter(t=>t.qualified&&(t.profit_usd||0)>=10).map(t=>t.profit_usd||0);
    return {threshold:10,count:c.length,total:Math.round(c.reduce((a,b)=>a+b,0)*100)/100,best:c.length?Math.max(...c):0};};
-  result={running:active,connection_label:liveBase?liveState:'Snapshot loaded',inventory:inv,target_pet:target,total_fetches:1,total_new:data.trades.length,last_new:0,last_batch:data.trades.length,trade_count:data.trades.length,
+  result={running:active,connection_label:liveBase?liveState:'Snapshot loaded',inventory:inv,mode:mode,target_pet:target,total_fetches:1,total_new:data.trades.length,last_new:0,last_batch:data.trades.length,trade_count:data.trades.length,
    results:qual,near_misses:owned.filter(t=>!t.qualified),target_trades:data.trades.filter(t=>t.qualified&&t.give.some(p=>key(p)===key(target))),stats:{},elapsed:Math.max(0,Date.now()/1000-data.generated_at),rate_limited:false,
    profit_summary:summary(owned),expired:[],expired_summary:{threshold:10,count:0,total:0,best:0}};
  }

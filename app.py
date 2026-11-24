@@ -37,6 +37,8 @@ STATE = {
     # the live count rises and falls; this one must never go backwards.
     "total_scanned": 0,
     "archive": [],
+    # "inventory" filters offers to pets you own; "all" explores every offer
+    "mode": "inventory",
 }
 LOCK = threading.Lock()
 
@@ -189,7 +191,7 @@ def background_scanner(gen):
         time.sleep(POLL_INTERVAL)
 
 
-def start_scanner(inventory, target_pet=""):
+def start_scanner(inventory, target_pet="", mode="inventory"):
     """Start a fresh scan, making sure the previous thread actually stops.
 
     Previously the old thread was only nudged with a 100 ms sleep; because it
@@ -209,6 +211,7 @@ def start_scanner(inventory, target_pet=""):
         STATE["payload"] = None
         STATE["archive"] = []
         STATE["inventory"] = set(inventory)
+        STATE["mode"] = mode if mode in ("inventory", "all") else "inventory"
         STATE["target_pet"] = target_pet or ""
         STATE["started_at"] = time.time()
         STATE["last_fetch_at"] = 0
@@ -274,11 +277,13 @@ def find():
         target = request.form.get("target_pet", "").strip()
     except Exception:
         inventory, target = set(), ""
-    if not inventory:
+    mode = "all" if request.form.get("mode") == "all" else "inventory"
+    if not inventory and mode != "all":
         return render_template("results_clean.html", error="Select at least one pet.",
                                inventory=[], target="")
-    start_scanner(inventory, target_pet=target)
-    return render_template("results_clean.html", inventory=sorted(inventory), target=target)
+    start_scanner(inventory, target_pet=target, mode=mode)
+    return render_template("results_clean.html", inventory=sorted(inventory), target=target,
+                           mode=mode)
 
 
 @app.route("/status")
@@ -302,6 +307,7 @@ def status():
             "total_scanned": STATE["total_scanned"],
             "in_window": len(STATE["trades"]),
             "target_pet": STATE["target_pet"],
+            "mode": STATE["mode"],
             "last_fetch_age": (round(now - STATE["last_fetch_at"], 1)
                                if STATE["last_fetch_at"] else None),
         })
@@ -334,6 +340,16 @@ def update_inventory():
         STATE["inventory"] = new_inv
         scan_core.refresh(bot, opportunities, STATE)
     return jsonify({"ok": True})
+
+
+@app.route("/set_mode", methods=["POST"])
+def set_mode():
+    """Switch between 'my inventory' and 'every offer on the feed'."""
+    mode = "all" if request.form.get("mode") == "all" else "inventory"
+    with LOCK:
+        STATE["mode"] = mode
+        scan_core.refresh(bot, opportunities, STATE)
+    return jsonify({"ok": True, "mode": mode})
 
 
 @app.route("/set_target", methods=["POST"])
