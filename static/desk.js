@@ -118,7 +118,7 @@ function card(t){
  const bottom=node('div','deal-bottom');const nums=node('div','numbers');const gain=node('div');gain.append(node('span','micro','ESTIMATED NET CHANGE'),node('div','gain'+(incomplete?' unknown':t.profit_usd<0?' loss':''),incomplete?'Profit unknown':(t.profit_usd>0?'+':'')+money(t.profit_usd)));nums.append(gain);
  const frost=node('div','frost');frost.append(node('span','micro','FROST VALUE · GIVE → RECEIVE'),node('span','',t.give_frost+' → '+t.recv_frost+'  ('+((t.recv_frost-t.give_frost)>=0?'+':'')+(t.recv_frost-t.give_frost).toFixed(4)+')'));nums.append(frost);bottom.append(nums);
  if(t.reason){bottom.append(node('p','muted',incomplete?'Some items lack reliable prices. The total profit cannot be determined.':t.reason.replace('no USD profit','Estimated loss')))}
- const a=t.exit_advice;if(a){const advice=node('div','recommendation');advice.append(node('strong','',a.decision),node('p','',a.reason));bottom.append(advice);const details=node('details','detail-toggle');details.append(node('summary','','Why this recommendation?'));for(const d of a.received_demand)details.append(node('p','',d.quantity+' × '+d.name+': '+(Number.isFinite(d.median_daily)?d.median_daily+' sales/day (7-day median)':(d.demand_label||'verified sales history unavailable'))));if(a.next_step)details.append(node('p','','Possible next trade: '+a.next_step.give.join(', ')+' → '+a.next_step.receive.join(', ')+' · extra '+money(a.next_step.extra_net)));details.append(node('p','',a.note));
+ const a=t.exit_advice;if(a){const advice=node('div','recommendation');advice.append(node('strong','','Market evidence · '+a.decision),node('p','',a.reason));bottom.append(advice);const details=node('details','detail-toggle');details.append(node('summary','','Why this recommendation?'));for(const d of a.received_demand)details.append(node('p','',d.quantity+' × '+d.name+': '+(Number.isFinite(d.median_daily)?d.median_daily+' sales/day (7-day median)':(d.demand_label||'verified sales history unavailable'))));if(a.next_step)details.append(node('p','','Possible next trade: '+a.next_step.give.join(', ')+' → '+a.next_step.receive.join(', ')+' · extra '+money(a.next_step.extra_net)));details.append(node('p','',a.note));
   // keep this panel open across re-renders instead of collapsing it
   details.dataset.tid=t.trade_id;
   if(openDetails.has(t.trade_id))details.open=true;
@@ -128,6 +128,7 @@ function card(t){
  if(followups.length){const panel=node('div','recommendation');panel.append(node('strong','','Next downgrades found'),node('p','micro','Alternative offers using only pets you would receive. Extra gains are estimates, not additive.'));
   for(const f of followups){const option=node('div');if(f.preferred)option.append(node('strong','','Preferred downgrade target'));option.append(node('p','',f.give.join(', ')+' → '+f.receive.join(', ')),node('p','', '+'+money(f.extra_net)+' extra ('+f.extra_pct+'%) · holdings after trade: '+money(f.basket_net_after)),node('p','micro',f.liquid?'StarPets sales check passed for resulting holdings':'Cash-sales check incomplete or below threshold'));
    const link=node('a','outline',tradeLabel(f.trade_id));link.href=tradeUrl(f.trade_id);link.target='_blank';link.rel='noopener noreferrer';option.append(link);panel.append(option)}bottom.append(panel)}
+ if(window.tradeCoach)bottom.append(window.tradeCoach.panel(t));
  const actions=node('div','actions');const elveTrade=elve;
  if(elveTrade){
   const copy=node('button','outline','Copy details');
@@ -220,13 +221,14 @@ async function poll(){
  if(stopped||pollBusy)return;
  if(document.hidden&&!window.dealAlerts?.enabled()){schedule(2000);return}      // don't poll a tab nobody is looking at
  pollBusy=true;
- try{const r=await fetch('/status');if(!r.ok)throw Error();state=screenPrices(await r.json());lastUpdate=Date.now();render();window.dealAlerts?.consider(state)}
+ try{const r=await fetch('/status');if(!r.ok)throw Error();state=screenPrices(await r.json());lastUpdate=Date.now();window.tradeCoach?.observe(state);render();window.dealAlerts?.consider(state)}
  catch{$('connection').textContent='Connection lost · retrying'}
  finally{pollBusy=false}
  if(!stopped)schedule(2000);else updateStamp();
 }
 function pollNow(){clearTimeout(pollTimer);poll()}
 window.addEventListener('live-trades-updated',pollNow);
+window.addEventListener('learning-updated',()=>render(true));
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&!stopped)pollNow();else updateStamp()});
 setInterval(updateStamp,1000);
 for(const [id,key,def] of [['margin-dollars','preferred_min_dollars',10],['margin-percent','preferred_min_percent',20]]){

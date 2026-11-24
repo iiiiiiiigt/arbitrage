@@ -96,3 +96,28 @@ Settings stay in this browser's local storage; the webhook is sent directly to
 Discord, never to the collector or GitHub. Keep the dashboard open, scanning,
 and the device awake. Background browser throttling can delay checks. Snapshots
 and offline feeds do not trigger alerts. Remove webhook clears saved settings.
+
+
+### Personal trade coach
+
+The dashboard observes up to 2,000 live offers over 30 days in browser storage.
+Track a trade to keep it in your private journal after its listing expires. Once
+all received pets have been sold directly, record total proceeds after selling
+fees (before withdrawal) and days to sell the full basket. Do not include later
+trade chains or additional inventory in this price-calibration outcome.
+
+After five reported sales in the last 90 days, advice uses the median ratio of
+actual to predicted net resale, capped at 1.0. It prefers the same preferred-pet
+category when there are at least five samples, otherwise uses all completed sales.
+This is conservative empirical calibration, not a trained neural network or a
+verified profitability forecast. Observing an offer or tracking a trade does not
+count as a completed sale. Slow reported sales (median over seven days) cause a
+review recommendation. Missing prices or demand cannot be upgraded by learning.
+Follow-up advice still requires an observed affordable, liquid downgrade.
+
+Original catalog numbers remain visible. Calibrated pass/review recommendations
+suppress webhook alerts once the sample requirement is met. The coach does not
+execute trades, learn withdrawal fees, or infer profit against purchase costs.
+Edit/remove outcomes in Personal trade coach, or export the journal and observations.
+All learning data remains in this browser; clearing site data removes it.
+Run `node test_learning_model.cjs` to validate the model rules.

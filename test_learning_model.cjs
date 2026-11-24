@@ -1,0 +1,18 @@
+const assert=require('node:assert/strict');
+const M=require('./static/learning-model.js');
+const now=Date.now();const trade={qualified:true,give_usd:40,recv_usd:50,preferred_receive:true,exit_advice:{received_demand:[{reliable:true,demand_ok:true}],downgrade_options:[]}};
+const sales=(ratio,count=5)=>Array.from({length:count},(_,i)=>({status:'sold',actual_net:50*ratio,days:2,completed_at:now-i,trade:{recv_usd:50,preferred_receive:true}}));
+assert.equal(M.advise(trade,[]).kind,'sell');
+assert.equal(M.calibrate(sales(.8,4),trade).ready,false);
+assert.equal(M.advise(trade,sales(.8)).kind,'pass');
+assert.equal(M.advise(trade,sales(.8)).gain,0);
+assert.equal(M.calibrate(sales(2),trade).factor,1);
+assert.equal(M.calibrate(sales(.8).map(x=>({...x,status:'tracked'})),trade).ready,false);
+assert.equal(M.calibrate(sales(.8).map(x=>({...x,completed_at:now-91*86400000})),trade).ready,false);
+assert.equal(M.advise({...trade,qualified:false,exit_advice:{}},sales(1)).kind,'review');
+assert.equal(M.advise(trade,sales(1).map(x=>({...x,days:10}))).kind,'review');
+const chain={...trade,exit_advice:{...trade.exit_advice,downgrade_options:[{liquid:true,extra_net:5,give:['B'],receive:['C']}]}};
+assert.equal(M.advise(chain,sales(1)).kind,'downgrade');
+assert.equal(M.advise(chain,sales(1)).chainGain,15);
+assert.equal(M.advise({...chain,exit_advice:{...chain.exit_advice,downgrade_options:[{liquid:false,extra_net:50}]}},[]).kind,'sell');
+console.log('Passed learning calibration, warm-up, conservative cap, age limit, liquidity, slow-sale evidence and follow-up checks.');
