@@ -86,9 +86,10 @@ def exit_advice(bot, trade, observed, now=None):
             'next_step': best, 'downgrade_options': options[:3],
             'note': 'Cash exit requires a seven-day median of at least 2 observed StarPets sales/day per variant, including retained pets. AMVGG ratings indicate trading interest only. Follow-up offers are alternatives, not cumulative profits; availability is unconfirmed. Estimates assume a 30% commission.'}
 
-def assess_demand(bot, row, observed, margin_passed):
+def assess_demand(bot, row, observed, margin_passed, advice=None):
     """A price margin alone cannot qualify an offer as worth considering."""
-    advice = exit_advice(bot, row, observed)
+    if advice is None:
+        advice = exit_advice(bot, row, observed)
     row = dict(row, exit_advice=advice, margin_qualified=margin_passed,
                qualified=bool(margin_passed and advice['demand_passed']))
     if margin_passed and not advice['demand_passed']:

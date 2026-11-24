@@ -1,6 +1,6 @@
 let state=null,tab='good',stopped=false,researchRows=[];
 let lastSig='',lastUpdate=0,lastChange=0,nextAt=0,pollTimer=null,lastResearchSig='';
-let lastAnnounceCount=null;
+let lastAnnounceCount=null,pollBusy=false;
 const openDetails=new Set();
 function fullyPriced(t){return !t.unknown?.length && !/unpriced|low-confidence/i.test(t.reason||'')}
 function screenPrices(data){
@@ -217,13 +217,16 @@ if($('mode-toggle'))$('mode-toggle').onclick=async()=>{
 
 function schedule(ms){clearTimeout(pollTimer);nextAt=Date.now()+ms;pollTimer=setTimeout(poll,ms);updateStamp()}
 async function poll(){
- if(stopped)return;
+ if(stopped||pollBusy)return;
  if(document.hidden&&!window.dealAlerts?.enabled()){schedule(2000);return}      // don't poll a tab nobody is looking at
+ pollBusy=true;
  try{const r=await fetch('/status');if(!r.ok)throw Error();state=screenPrices(await r.json());lastUpdate=Date.now();render();window.dealAlerts?.consider(state)}
  catch{$('connection').textContent='Connection lost · retrying'}
+ finally{pollBusy=false}
  if(!stopped)schedule(2000);else updateStamp();
 }
 function pollNow(){clearTimeout(pollTimer);poll()}
+window.addEventListener('live-trades-updated',pollNow);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&!stopped)pollNow();else updateStamp()});
 setInterval(updateStamp,1000);
 for(const [id,key,def] of [['margin-dollars','preferred_min_dollars',10],['margin-percent','preferred_min_percent',20]]){

@@ -8,9 +8,11 @@ if(linkFeed&&validFeed(linkFeed)){liveBase=validFeed(linkFeed);localStorage.setI
 if(liveBase)liveState='Connecting to live feed…';
 async function refreshLive(){
  if(!liveBase||liveBusy||(document.hidden&&!window.dealAlerts?.enabled()))return;liveBusy=true;
- try{const r=await nativeFetch(liveBase+'/feed',{cache:'no-store',credentials:'omit',signal:AbortSignal.timeout(8000)});if(!r.ok)throw Error();const d=await r.json();if(!Array.isArray(d.trades)||!Number.isFinite(d.generated_at)||!d.sources)throw Error();
+ try{const r=await nativeFetch(liveBase+'/feed'+(Number.isInteger(snapshot?.version)?'?after='+snapshot.version:''),{cache:'no-store',credentials:'omit',signal:AbortSignal.timeout(18000)});if(!r.ok)throw Error();const d=await r.json();if(!Array.isArray(d.trades)||!Number.isFinite(d.generated_at)||!d.sources)throw Error();
   if(Date.now()/1000-d.generated_at>30)throw Error();
+  const different=snapshot?.version!==d.version||snapshot?.generated_at!==d.generated_at;
   snapshot={...snapshot,...d};liveState='Live · '+(d.sources.collector||'Connected');
+  if(different)window.dispatchEvent(new Event('live-trades-updated'));
  }catch{liveState='Live feed offline · showing last received data'}finally{liveBusy=false}
 }
 const key=s=>s.toLowerCase().split(/[\s_-]+/).sort().join('_');
@@ -86,8 +88,9 @@ document.addEventListener('DOMContentLoaded',()=>{
  // Static hosting never accepts authenticated trades or collects cookies.
  document.addEventListener('click',e=>{const b=e.target.closest('button');if(!b||!/^Accept/.test(b.textContent.trim()))return;const card=b.closest('.trade, .deal');const link=card?.querySelector('a[target="_blank"]');if(link){e.preventDefault();e.stopImmediatePropagation();window.open(link.href,'_blank','noopener')}},true);
  ready.then(()=>updateStatus()).catch(()=>{document.getElementById('pages-status').textContent='Snapshot failed to load. Reload to retry.'});
- function updateStatus(){syncNavigation();const el=document.getElementById('pages-status');el.textContent=(liveBase?liveState:'Snapshot mode · scheduled every 5 min')+' · data updated '+new Date(snapshot.generated_at*1000).toLocaleTimeString();el.title='Live mode checks your collector every 2 seconds. Marketplace limits and network latency still apply.'}
- setInterval(()=>{if(liveBase)refreshLive().then(updateStatus)},2000);
+ function updateStatus(){syncNavigation();const el=document.getElementById('pages-status');el.textContent=(liveBase?liveState:'Snapshot mode · scheduled every 5 min')+' · data updated '+new Date(snapshot.generated_at*1000).toLocaleTimeString();el.title='Live mode receives updates as soon as the collector publishes them. Marketplace limits and network latency still apply.'}
+ async function watchLive(){try{if(liveBase){await refreshLive();updateStatus()}}finally{setTimeout(watchLive,liveBase&&Number.isInteger(snapshot?.version)&&liveState.startsWith('Live ·')?100:2000)}}
+ ready.then(watchLive);
 // Snapshot mode: the build only changes every ~5 min, so 30s revalidation is
 // plenty (and cuts request volume ~3x). Live mode still checks every 2s.
  setInterval(()=>{if(!liveBase&&!document.hidden)loadSnapshot().then(updateStatus).catch(console.error)},30000);

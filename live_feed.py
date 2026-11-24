@@ -1,15 +1,18 @@
 """Read-only market feed. Run separately from the private Flask dashboard."""
 import threading
+import queue
 import time
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 import bot
 import opportunities
+import scan_core
 
 feed = Flask(__name__, static_folder=None)
 import catalog_checker
 catalog_checker.register(feed)
 lock = threading.Lock()
-state = {'generated_at': 0, 'trades': [], 'sources': {'collector': 'Starting'}}
+changed = threading.Condition(lock)
+state = {'version': 0, 'generated_at': 0, 'trades': [], 'sources': {'collector': 'Starting'}}
 stop = threading.Event()
 
 @feed.after_request
@@ -23,49 +26,74 @@ def cors(response):
 
 @feed.get('/feed')
 def read_feed():
-    with lock:
+    after = request.args.get('after', type=int)
+    with changed:
+        if after is not None:
+            changed.wait_for(lambda: state['version'] != after, timeout=12)
         return jsonify(state)
+
 
 def collect():
     bot.sales_collector.start()
-    # This collector sends public market requests only, without proxy rotation.
-    bot.PROXIES = []
+    events = queue.Queue(maxsize=8)
+    statuses = {'AMVGG': 'Starting', 'Elvebredd': 'Starting'}
+    def source_loop(source):
+        while not stop.is_set():
+            try:
+                if source == 'AMVGG':
+                    batch, status, _ = bot._fetch_amvgg_batch(use_proxy=False)
+                    delay = max(30, bot.LAST_RETRY_AFTER) if status == 429 else 5 if status != 200 else 2
+                else:
+                    batch = opportunities.elvebredd_trades()
+                    status = 200 if opportunities.source_status.startswith('Connected') else 0
+                    delay = 10
+                events.put((source, batch, status, time.time()))
+            except Exception:
+                delay = 10
+            stop.wait(delay)
+    for source in statuses:
+        threading.Thread(target=source_loop, args=(source,), daemon=True, name='feed-'+source).start()
     seen = {}
     while not stop.is_set():
         try:
-            batch, status = bot.fetch_one_batch()
+            try:
+                source, batch, status, arrived = events.get(timeout=2)
+                statuses[source] = 'Connected' if status == 200 else 'Unavailable / backing off'
+                for trade in batch:
+                    if trade.get('id'):
+                        trade['_seen_at'] = arrived
+                        seen[str(trade['id'])] = trade
+            except queue.Empty:
+                pass
             now = time.time()
-            for trade in batch:
-                if trade.get('id'):
-                    trade['_seen_at'] = now
-                    seen[str(trade['id'])] = trade
             seen = {k:t for k,t in seen.items() if now-t['_seen_at'] < 120}
-            rows = []
             observed = list(seen.values())
+            began = time.perf_counter()
+            index = scan_core.build_index(bot, observed, now)
+            rows = []
             for trade in observed:
                 give, ok, _ = bot._safe_pet_names(trade.get('lookingFor', []))
                 if not ok or not give:
                     continue
                 row, _ = bot._evaluate_trade(trade, give)
-                if row:
-                    row['qualified'] = True
-                else:
+                qualified = row is not None
+                if row is None:
                     near = bot.get_near_misses([trade], give)
                     if not near:
                         continue
                     row = near[0]
-                    row['qualified'] = False
-                rows.append(opportunities.assess_demand(bot, row, observed, row['qualified']))
-            with lock:
-                state.update(generated_at=now, trades=rows,
-                             sources={'collector': 'Running' if status==200 else 'Upstream unavailable / backing off',
-                                      'Elvebredd': opportunities.source_status,
-                                      'StarPets': bot.sales_collector.status})
-            stop.wait(30 if status == 429 else 5 if status != 200 else 2)
+                advice = scan_core.exit_advice_fast(bot, opportunities, row, index, now)
+                rows.append(opportunities.assess_demand(bot, row, observed, qualified, advice=advice))
+            with changed:
+                state.update(version=state['version']+1, generated_at=time.time(), trades=rows,
+                             scoring_ms=round((time.perf_counter()-began)*1000, 1),
+                             sources={'collector': 'Running' if 'Connected' in statuses.values() else 'Upstream unavailable / backing off',
+                                      **statuses, 'StarPets': bot.sales_collector.status})
+                changed.notify_all()
         except Exception:
             with lock:
                 state['sources']['collector'] = 'Collector error; retrying'
-            stop.wait(10)
+            stop.wait(2)
 
 if __name__ == '__main__':
     threading.Thread(target=collect, daemon=True).start()
