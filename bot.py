@@ -277,7 +277,7 @@ MIN_PROFIT_PCT  = 0.05
 FAIR_RANGE_LOW  = 1.25
 FAIR_RANGE_HIGH = 1.60
 
-def _evaluate_trade(trade, user_pets):
+def _evaluate_trade(trade, user_pets, ignore_inventory=False):
     looking  = trade.get("lookingFor", [])
     offering = trade.get("offering", [])
     if not looking or not offering: return None, "empty side"
@@ -288,7 +288,8 @@ def _evaluate_trade(trade, user_pets):
     if not ok: return None, "malformed offering"
 
     if not give_pets or not receive_pets: return None, "sign-only side"
-    if any(p not in user_pets for p in give_pets): return None, "not in your inventory"
+    if any(p not in user_pets for p in give_pets) and not ignore_inventory:
+        return None, "not in your inventory"
     if give_signs or recv_signs:
         all_signs = list(set(give_signs + recv_signs))
         return None, f"trade has signs ({', '.join(all_signs)})"
@@ -422,11 +423,12 @@ def accept_trade(trade_id):
         return False
 
 # ── Ranking ───────────────────────────────────────────────────────────
-def rank_trades(trades, user_pets, min_stars=2, stats=None):
+def rank_trades(trades, user_pets, min_stars=2, stats=None, ignore_inventory=False):
+    """Rank trades. ignore_inventory=True explores every offer, not just yours."""
     if stats is None: stats = {}
     passed = []
     for t in trades:
-        result, reason = _evaluate_trade(t, user_pets)
+        result, reason = _evaluate_trade(t, user_pets, ignore_inventory=ignore_inventory)
         if result:
             if result["stars"] >= min_stars: passed.append(result)
             else: stats["below min stars"] = stats.get("below min stars", 0) + 1
@@ -436,12 +438,12 @@ def rank_trades(trades, user_pets, min_stars=2, stats=None):
     passed.sort(key=lambda x: (-x["stars"], -x["profit_usd"]))
     return passed
 
-def get_near_misses(trades, user_pets, limit=30):
+def get_near_misses(trades, user_pets, limit=30, ignore_inventory=False):
     out = []
     skip = ("not in your inventory", "empty side", "sign-only side",
             "malformed lookingFor", "malformed offering", "below min stars")
     for t in trades:
-        result, reason = _evaluate_trade(t, user_pets)
+        result, reason = _evaluate_trade(t, user_pets, ignore_inventory=ignore_inventory)
         if result is not None or reason in skip: continue
         if reason.startswith("trade has signs"): continue
         gp, _, _ = _safe_pet_names(t.get("lookingFor", []), label="d")

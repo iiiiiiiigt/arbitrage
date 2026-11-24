@@ -247,8 +247,11 @@ def refresh(bot, opportunities, state):
     by_slug = build_index(bot, observed, now)
 
     stats = {}
-    results = bot.rank_trades(observed, state['inventory'], min_stars=1, stats=stats)
-    near = bot.get_near_misses(observed, state['inventory'], limit=30)
+    explore = state.get('mode') == 'all'
+    results = bot.rank_trades(observed, state['inventory'], min_stars=1, stats=stats,
+                              ignore_inventory=explore)
+    near = bot.get_near_misses(observed, state['inventory'], limit=30,
+                               ignore_inventory=explore)
 
     def assess(row, margin):
         advice = exit_advice_fast(bot, opportunities, row, by_slug, now)
@@ -279,6 +282,7 @@ def refresh(bot, opportunities, state):
 
     state['payload'] = {
         'running': state['running'], 'inventory': sorted(state['inventory']),
+        'mode': state.get('mode', 'inventory'),
         'target_pet': state['target_pet'],
         'total_fetches': state['total_fetches'], 'total_new': state['total_new'],
         'last_new': state['last_new'], 'last_batch': state['last_batch'],

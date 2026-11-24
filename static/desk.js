@@ -160,6 +160,8 @@ function render(force){
  }
  $('good-count').textContent=state.results.length;$('review-count').textContent=state.near_misses.length;
  $('connection').textContent=state.rate_limited?'Rate limited · slowing down':state.running?'● Scanning both markets':'Scanning stopped';
+ if(state.mode==='all')$('connection').textContent+=' · all pets';
+ if($('mode-toggle'))$('mode-toggle').textContent=state.mode==='all'?'Scanning: all pets':'Scanning: my pets';
  const list=visibleList();
  const sig=sigOf(list);
  if(!force&&sig===lastSig){updateStamp();return}   // nothing changed: leave the DOM alone
@@ -189,6 +191,15 @@ function render(force){
 document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{tab=b.dataset.tab;document.querySelectorAll('[data-tab]').forEach(x=>x.classList.toggle('active',x===b));render(true)});
 $('pause').onclick=async()=>{try{const r=await fetch('/stop',{method:'POST'});if(!r.ok)throw Error();stopped=true;clearTimeout(pollTimer);$('pause').disabled=true;$('pause').textContent='Stopped';if(state){state.running=false;render(true)}updateStamp()}catch{$('connection').textContent='Could not stop. Retry.'}};
 if($('refresh'))$('refresh').onclick=()=>{pollNow()};
+if($('mode-toggle'))$('mode-toggle').onclick=async()=>{
+ const next=(state&&state.mode==='all')?'inventory':'all';
+ try{
+  const r=await fetch('/set_mode',{method:'POST',body:new URLSearchParams({mode:next})});
+  if(!r.ok)throw Error();
+  const d=await r.json();
+  if(state){state.mode=d.mode;lastSig='';render(true)}
+ }catch{$('connection').textContent='Could not switch mode'}
+};
 
 function schedule(ms){clearTimeout(pollTimer);nextAt=Date.now()+ms;pollTimer=setTimeout(poll,ms);updateStamp()}
 async function poll(){
