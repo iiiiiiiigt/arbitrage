@@ -5,6 +5,7 @@ let liveBase=localStorage.getItem('live_feed_url')||'', liveState='Snapshot mode
 const linkFeed=new URLSearchParams(location.hash.slice(1)).get('feed');
 function validFeed(value){try{const u=new URL(value);return u.protocol==='https:'&&!u.username&&!u.password&&!u.search&&!u.hash?u.origin:''}catch{return ''}}
 if(linkFeed&&validFeed(linkFeed)){liveBase=validFeed(linkFeed);localStorage.setItem('live_feed_url',liveBase);history.replaceState(null,'',location.pathname+location.search)}
+if(liveBase)liveState='Connecting to live feed…';
 async function refreshLive(){
  if(!liveBase||liveBusy||document.hidden)return;liveBusy=true;
  try{const r=await nativeFetch(liveBase+'/feed',{cache:'no-store',credentials:'omit',signal:AbortSignal.timeout(8000)});if(!r.ok)throw Error();const d=await r.json();if(!Array.isArray(d.trades)||!Number.isFinite(d.generated_at)||!d.sources)throw Error();
@@ -29,7 +30,7 @@ window.fetch=async function(input,options={}){
  if(path==='/accept')result={success:false,error:'Open the source website to accept'};
  if(path==='/status'){
   const inv=inventoryNames(),target=localStorage.getItem('pages_target')||'',owned=data.trades.filter(t=>affordable(t.give,inv));
-  result={running:active,inventory:inv,target_pet:target,total_fetches:1,total_new:data.trades.length,last_new:0,last_batch:data.trades.length,trade_count:data.trades.length,
+  result={running:active,connection_label:liveBase?liveState:'Snapshot loaded',inventory:inv,target_pet:target,total_fetches:1,total_new:data.trades.length,last_new:0,last_batch:data.trades.length,trade_count:data.trades.length,
    results:owned.filter(t=>t.qualified),near_misses:owned.filter(t=>!t.qualified),target_trades:data.trades.filter(t=>t.qualified&&t.give.some(p=>key(p)===key(target))),stats:{},elapsed:Math.max(0,Date.now()/1000-data.generated_at),rate_limited:false};
  }
  if(path==='/research'){
@@ -49,11 +50,16 @@ document.addEventListener('DOMContentLoaded',()=>{
  const connect=document.createElement('button');connect.className='primary';connect.textContent='Connect live';connect.onclick=async()=>{const u=validFeed(input.value.trim());if(!u){help.textContent='Enter an HTTPS address without a password, query, or fragment.';return}liveBase=u;localStorage.setItem('live_feed_url',u);await ready;await refreshLive();updateStatus()};settings.append(connect);
  const disconnect=document.createElement('button');disconnect.className='outline';disconnect.textContent='Use snapshots';disconnect.onclick=async()=>{liveBase='';localStorage.removeItem('live_feed_url');await loadSnapshot();updateStatus()};settings.append(disconnect);
  document.getElementById('pages-status').after(settings);
- const form=document.getElementById('search-form');if(form)form.addEventListener('submit',e=>{e.preventDefault();location.href='./dashboard.html'});
+ function navigationUrl(path){return path+(liveBase?'#feed='+encodeURIComponent(liveBase):'')}
+ function syncNavigation(){
+  document.querySelectorAll('a[href]').forEach(a=>{const u=new URL(a.href,location.href);if(u.origin===location.origin&&u.pathname.startsWith('/arbitrage/')&&/\/(index|dashboard)\.html$/.test(u.pathname)){u.hash=liveBase?'feed='+encodeURIComponent(liveBase):'';a.href=u.href}});
+ }
+ syncNavigation();
+ const form=document.getElementById('search-form');if(form)form.addEventListener('submit',e=>{e.preventDefault();location.href=navigationUrl('./dashboard.html')});
  // Static hosting never accepts authenticated trades or collects cookies.
  document.addEventListener('click',e=>{const b=e.target.closest('button');if(!b||!/^Accept/.test(b.textContent.trim()))return;const card=b.closest('.trade, .deal');const link=card?.querySelector('a[target="_blank"]');if(link){e.preventDefault();e.stopImmediatePropagation();window.open(link.href,'_blank','noopener')}},true);
  ready.then(()=>updateStatus()).catch(()=>{document.getElementById('pages-status').textContent='Snapshot failed to load. Reload to retry.'});
- function updateStatus(){const el=document.getElementById('pages-status');el.textContent=(liveBase?liveState:'Snapshot mode · scheduled every 5 min')+' · data updated '+new Date(snapshot.generated_at*1000).toLocaleTimeString();el.title='Live mode checks your collector every 2 seconds. Marketplace limits and network latency still apply.'}
+ function updateStatus(){syncNavigation();const el=document.getElementById('pages-status');el.textContent=(liveBase?liveState:'Snapshot mode · scheduled every 5 min')+' · data updated '+new Date(snapshot.generated_at*1000).toLocaleTimeString();el.title='Live mode checks your collector every 2 seconds. Marketplace limits and network latency still apply.'}
  setInterval(()=>{if(liveBase)refreshLive().then(updateStatus)},2000);
  setInterval(()=>{if(!liveBase&&!document.hidden)loadSnapshot().then(updateStatus).catch(console.error)},10000);
 });

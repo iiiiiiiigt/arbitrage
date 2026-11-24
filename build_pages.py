@@ -1,5 +1,6 @@
 """Build the existing Flask UI as a credential-free static dashboard."""
 import json
+import hashlib
 import re
 import shutil
 import time
@@ -17,7 +18,7 @@ def build():
     css = OUT / 'static' / 'desk.css'
     css.write_text(css.read_text(encoding='utf-8').replace("'/static/theme.css'", "'./theme.css'"), encoding='utf-8')
     js = OUT / 'static' / 'desk.js'
-    js.write_text(js.read_text(encoding='utf-8').replace('● Scanning both markets', 'Snapshot loaded'), encoding='utf-8')
+    js.write_text(js.read_text(encoding='utf-8').replace("'● Scanning both markets'", "(state.connection_label || 'Snapshot loaded')"), encoding='utf-8')
     grouped = app.build_grouped_pets()
     catalog = []
     for p in bot.AMVGG_PETS:
@@ -64,6 +65,11 @@ def build():
                 '<div class="help-tip">Trade snapshots refresh through GitHub Actions, scheduled about every five minutes. Jobs may be delayed. Prices come from the saved catalog with an assumed 30% commission. Accept opens the source marketplace; update your inventory after completing an exchange.</div>',
                 html, flags=re.S)
             html = html.replace('Scanning...', 'Snapshot loaded').replace('>LIVE</div>', '>SNAPSHOT</div>')
+            def version_asset(match):
+                path = OUT / match.group(0).removeprefix('./')
+                version = hashlib.sha256(path.read_bytes()).hexdigest()[:12]
+                return match.group(0) + '?v=' + version
+            html = re.sub(r'\./static/[A-Za-z0-9_-]+\.(?:js|css)', version_asset, html)
             (OUT / name).write_text(html, encoding='utf-8')
     print(f'Built Pages: {len(rows)} trade rows, {len(catalog)} priced variants')
 
