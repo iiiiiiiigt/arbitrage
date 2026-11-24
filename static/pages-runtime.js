@@ -44,14 +44,14 @@ window.fetch=async function(input,options={}){
  const s=await ready;const data=snapshot||s;const form=new URLSearchParams(options.body||'');let result={ok:true};
  if(path==='/pet-options')result=data.pets;
  if(path==='/set_target')localStorage.setItem('pages_target',form.get('target_pet')||'');
- if(path==='/set_mode'){const m=form.get('mode')==='all'?'all':'inventory';localStorage.setItem('pages_mode',m);result={ok:true,mode:m};}
+ if(path==='/set_mode'){const m=['all','preferred'].includes(form.get('mode'))?form.get('mode'):'inventory';localStorage.setItem('pages_mode',m);result={ok:true,mode:m};}
  if(path==='/stop')active=false;
  if(path==='/update_inventory')localStorage.setItem('adoptme_inventory',form.get('inventory')||'[]');
  if(path==='/accept')result={success:false,error:'Open the source website to accept'};
  if(path==='/status'){
   const inv=inventoryNames(),target=localStorage.getItem('pages_target')||'';
-  const mode=localStorage.getItem('pages_mode')==='all'?'all':'inventory';
-  const owned=mode==='all'?data.trades:data.trades.filter(t=>affordable(t.give,inv));
+  const mode=['all','preferred'].includes(localStorage.getItem('pages_mode'))?localStorage.getItem('pages_mode'):'inventory';
+  const owned=mode!=='inventory'?data.trades:data.trades.filter(t=>affordable(t.give,inv));
   const qual=owned.filter(t=>t.qualified);
   const summary=rows=>{const c=rows.filter(t=>t.qualified&&(t.profit_usd||0)>=10).map(t=>t.profit_usd||0);
    return {threshold:10,count:c.length,total:Math.round(c.reduce((a,b)=>a+b,0)*100)/100,best:c.length?Math.max(...c):0};};

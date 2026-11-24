@@ -5,6 +5,15 @@ const openDetails=new Set();
 function fullyPriced(t){return !t.unknown?.length && !/unpriced|low-confidence/i.test(t.reason||'')}
 function screenPrices(data){
  const excluded=new Set();
+ if(data.mode==='preferred'){
+  const dollars=Math.max(0,Number(localStorage.getItem('preferred_min_dollars')??10));
+  const percent=Math.max(0,Number(localStorage.getItem('preferred_min_percent')??20));
+  const qualifies=t=>t.qualified&&t.preferred_receive&&Number.isFinite(t.profit_usd)&&t.give_usd>0&&t.profit_usd>=dollars&&(100*t.profit_usd/t.give_usd)>=percent;
+  for(const field of ['results','near_misses','target_trades','expired'])data[field]=(data[field]||[]).filter(qualifies);
+  const profits=data.results.map(t=>t.profit_usd);
+  data.profit_summary={threshold:dollars,count:profits.length,total:profits.reduce((a,b)=>a+b,0),best:Math.max(0,...profits)};
+ }
+
  for(const name of ['results','near_misses','target_trades']){
   data[name]=data[name].filter(t=>{if(fullyPriced(t))return true;excluded.add(t.trade_id);return false});
  }
@@ -164,8 +173,9 @@ function render(force){
  }
  $('good-count').textContent=state.results.length;$('review-count').textContent=state.near_misses.length;
  $('connection').textContent=state.rate_limited?'Rate limited · slowing down':state.running?'● Scanning both markets':'Scanning stopped';
- if(state.mode==='all')$('connection').textContent+=' · all pets';
- if($('mode-toggle'))$('mode-toggle').textContent=state.mode==='all'?'Scanning: all pets':'Scanning: my pets';
+ if(state.mode!=='inventory')$('connection').textContent+=' · all pets';
+ if($('margin-controls'))$('margin-controls').hidden=state.mode!=='preferred';
+ if($('mode-toggle'))$('mode-toggle').textContent=state.mode==='preferred'?'Scanning: high-margin downgrade pets':state.mode==='all'?'Scanning: all pets':'Scanning: my pets';
  const list=visibleList();
  const sig=sigOf(list);
  if(!force&&sig===lastSig){updateStamp();return}   // nothing changed: leave the DOM alone
@@ -196,12 +206,12 @@ document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{tab=b.dataset.
 $('pause').onclick=async()=>{try{const r=await fetch('/stop',{method:'POST'});if(!r.ok)throw Error();stopped=true;clearTimeout(pollTimer);$('pause').disabled=true;$('pause').textContent='Stopped';if(state){state.running=false;render(true)}updateStamp()}catch{$('connection').textContent='Could not stop. Retry.'}};
 if($('refresh'))$('refresh').onclick=()=>{pollNow()};
 if($('mode-toggle'))$('mode-toggle').onclick=async()=>{
- const next=(state&&state.mode==='all')?'inventory':'all';
+ const modes=['inventory','all','preferred'];const next=modes[(modes.indexOf(state?.mode)+1)%3];
  try{
   const r=await fetch('/set_mode',{method:'POST',body:new URLSearchParams({mode:next})});
   if(!r.ok)throw Error();
   const d=await r.json();
-  if(state){state.mode=d.mode;lastSig='';render(true)}
+  if(state){state.mode=d.mode;lastSig='';pollNow()}
  }catch{$('connection').textContent='Could not switch mode'}
 };
 
@@ -216,6 +226,9 @@ async function poll(){
 function pollNow(){clearTimeout(pollTimer);poll()}
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&!stopped)pollNow();else updateStamp()});
 setInterval(updateStamp,1000);
+for(const [id,key,def] of [['margin-dollars','preferred_min_dollars',10],['margin-percent','preferred_min_percent',20]]){
+ const input=$(id);if(input){input.value=localStorage.getItem(key)??def;input.onchange=()=>{const value=Number(input.value);if(!Number.isFinite(value)||value<0){input.value=def;return}localStorage.setItem(key,String(value));lastSig='';pollNow()}}
+}
 poll();
 
 function researchTable(){const table=node('table');const header=node('tr');['Pet variant','Net resale','Potential uplift','Reported sales/day',''].forEach(s=>header.append(node('th','',s)));table.append(header);const q=$('research-filter').value.toLowerCase();researchRows.filter(r=>r.name.toLowerCase().includes(q)).forEach(r=>{const row=node('tr');[r.name,money(r.net),r.uplift_pct+'%',r.sales_per_day||'Unknown'].forEach(v=>row.append(node('td','',String(v))));const cell=node('td');const b=node('button','outline','Explore next');b.onclick=()=>{$('research-base').value=r.name;research()};cell.append(b);row.append(cell);table.append(row)});$('research-list').replaceChildren(table)}

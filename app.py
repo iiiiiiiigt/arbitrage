@@ -284,7 +284,9 @@ def find():
         target = request.form.get("target_pet", "").strip()
     except Exception:
         inventory, target = set(), ""
-    mode = "all" if request.form.get("mode") == "all" else "inventory"
+    mode = request.form.get("mode")
+    if mode not in ("all", "preferred"):
+        mode = "inventory"
     if not inventory and mode != "all":
         return render_template("results_clean.html", error="Select at least one pet.",
                                inventory=[], target="")
@@ -352,7 +354,9 @@ def update_inventory():
 @app.route("/set_mode", methods=["POST"])
 def set_mode():
     """Switch between 'my inventory' and 'every offer on the feed'."""
-    mode = "all" if request.form.get("mode") == "all" else "inventory"
+    mode = request.form.get("mode")
+    if mode not in ("all", "preferred"):
+        mode = "inventory"
     with LOCK:
         STATE["mode"] = mode
         scan_core.refresh(bot, opportunities, STATE)

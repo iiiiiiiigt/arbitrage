@@ -250,7 +250,7 @@ def refresh(bot, opportunities, state):
     by_slug = build_index(bot, observed, now)
 
     stats = {}
-    explore = state.get('mode') == 'all'
+    explore = state.get('mode') in ('all', 'preferred')
     results = bot.rank_trades(observed, state['inventory'], min_stars=1, stats=stats,
                               ignore_inventory=explore)
     near = bot.get_near_misses(observed, state['inventory'], limit=30,

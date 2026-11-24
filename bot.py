@@ -206,7 +206,10 @@ def with_demand(trade):
     for name in demand:
         info = pet_price_info(name)
         prices[name] = round(info['net'], 2) if info.get('reliable') else None
-    return dict(trade, item_demand=demand, item_net=prices)
+    from downgrade_preferences import SHORTLIST
+    preferred_keys = {canonical_slug(n) for n in SHORTLIST}
+    return dict(trade, item_demand=demand, item_net=prices,
+                preferred_receive=any(canonical_slug(n) in preferred_keys for n in trade.get('receive', [])))
 
 def pet_sales_demand(record):
     cached = sales_collector.get((record or {}).get('_key'))
