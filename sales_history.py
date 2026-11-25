@@ -103,6 +103,10 @@ class HistoryCollector:
         self.active_key = None
         self.completed = 0
         self.cache_hits = 0
+        self.request_interval = 1.0
+        self.success_streak = 0
+        self.request_count = 0
+        self.started_at = time.time()
 
     def start(self):
         with self.lock:
@@ -131,7 +135,8 @@ class HistoryCollector:
 
     def request(self, method, path, **kwargs):
         time.sleep(max(0, self.next_request - time.monotonic()))
-        self.next_request = time.monotonic() + 2
+        self.next_request = time.monotonic() + self.request_interval
+        self.request_count += 1
         try:
             response = self.session.request(method, BASE + path, timeout=(6, 12), **kwargs)
             if response.status_code != 200:
@@ -148,10 +153,19 @@ class HistoryCollector:
                         except (ValueError, TypeError, OverflowError):
                             pass
                 raise HistoryError(f'StarPets HTTP {response.status_code}', delay, global_pause)
-            return response.json()
+            payload = response.json()
+            self.success_streak += 1
+            if self.success_streak >= 20:
+                self.request_interval = max(0.5, self.request_interval * 0.75)
+                self.success_streak = 0
+            return payload
         except HistoryError:
+            self.success_streak = 0
+            self.request_interval = min(8.0, max(2.0, self.request_interval * 2))
             raise
         except Exception as exc:
+            self.success_streak = 0
+            self.request_interval = min(8.0, max(2.0, self.request_interval * 2))
             raise HistoryError(f'StarPets unavailable ({type(exc).__name__})', 15, True) from exc
 
     def enumerate_products(self, record):
@@ -202,6 +216,9 @@ class HistoryCollector:
                         queued=len(self.pending - {self.active_key}),
                         retrying=len(self.retries), active=self.active_key,
                         completed_since_start=self.completed, reused_requests=self.cache_hits,
+                        request_spacing_seconds=round(self.request_interval,3),
+                        requests_since_start=self.request_count,
+                        elapsed_seconds=round(time.time()-self.started_at),
                         cooldown_seconds=max(0, round(self.retry_at-time.time())))
 
     def fetch(self, key, record):

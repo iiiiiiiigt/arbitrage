@@ -19,6 +19,20 @@ class HistoryTests(unittest.TestCase):
             self.assertNotIn('secret-proxy-password', str(error.exception))
             self.assertEqual(error.exception.delay, 15)
 
+    def test_adaptive_pacing_accelerates_and_backs_off(self):
+        with tempfile.TemporaryDirectory() as temp:
+            c=HistoryCollector(Path(temp)/'history.json')
+            good=type('Response',(),{'status_code':200,'json':lambda self:{}})()
+            limited=type('Response',(),{'status_code':429,'headers':{'Retry-After':'1800'}})()
+            with patch('sales_history.time.sleep'),patch.object(c.session,'request',return_value=good):
+                for _ in range(60):c.request('GET','/test')
+            self.assertEqual(c.request_interval,0.5)
+            with patch('sales_history.time.sleep'),patch.object(c.session,'request',return_value=limited):
+                with self.assertRaises(HistoryError) as error:c.request('GET','/test')
+            self.assertEqual(c.request_interval,2)
+            self.assertEqual(error.exception.delay,1800)
+            self.assertEqual(c.success_streak,0)
+
     def test_rate_limit_preserves_retry_after(self):
         with tempfile.TemporaryDirectory() as temp:
             collector = HistoryCollector(Path(temp) / 'history.json')
