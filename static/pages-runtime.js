@@ -58,7 +58,7 @@ window.fetch=async function(input,options={}){
   const summary=rows=>{const c=rows.filter(t=>t.qualified&&(t.profit_usd||0)>=10).map(t=>t.profit_usd||0);
    return {threshold:10,count:c.length,total:Math.round(c.reduce((a,b)=>a+b,0)*100)/100,best:c.length?Math.max(...c):0};};
   result={running:active,market_learning:data.market_learning,connection_label:liveBase?liveState:'Snapshot loaded',inventory:inv,mode:mode,target_pet:target,total_fetches:1,total_new:data.trades.length,last_new:0,last_batch:data.trades.length,trade_count:data.trades.length,
-   alert_trades:owned,results:qual,near_misses:owned.filter(t=>!t.qualified),target_trades:data.trades.filter(t=>t.qualified&&t.give.some(p=>key(p)===key(target))),stats:{},elapsed:Math.max(0,Date.now()/1000-data.generated_at),rate_limited:false,
+   recent_trades:(data.recent_trades||data.trades).filter(t=>mode!=='inventory'||affordable(t.give,inv)),history_started:data.history_started,alert_trades:owned,results:qual,near_misses:owned.filter(t=>!t.qualified),target_trades:data.trades.filter(t=>t.qualified&&t.give.some(p=>key(p)===key(target))),stats:{},elapsed:Math.max(0,Date.now()/1000-data.generated_at),rate_limited:false,
    profit_summary:summary(owned),expired:[],expired_summary:{threshold:10,count:0,total:0,best:0}};
  }
  if(path==='/research'){

@@ -1,10 +1,20 @@
-let state=null,tab='good',stopped=false,researchRows=[];
+let state=null,tab='good',stopped=false,researchRows=[],tenMinuteView=false;
+const recentLocal=new Map();let recentMode=null;
 let lastSig='',lastUpdate=0,lastChange=0,nextAt=0,pollTimer=null,lastResearchSig='';
 let lastAnnounceCount=null,pollBusy=false;
 const openDetails=new Set();
 function fullyPriced(t){return !t.unknown?.length && !/unpriced|low-confidence/i.test(t.reason||'')}
 function screenPrices(data){
  data.alert_trades=data.alert_trades||[...(data.results||[]),...(data.near_misses||[])];
+ if(recentMode!==data.mode){recentLocal.clear();recentMode=data.mode}
+ const now=Date.now()/1000;
+ for(const t of data.recent_trades||data.alert_trades){const previous=recentLocal.get(t.trade_id);const observed=t.observed_at??(Number.isFinite(t.seen_age)?now-t.seen_age:previous?.observed_at??now);recentLocal.set(t.trade_id,{...t,observed_at:observed})}
+ for(const [id,t] of recentLocal)if(now-t.observed_at>=600)recentLocal.delete(id);
+ if(tenMinuteView){
+  const rows=[...recentLocal.values()].filter(t=>now-t.observed_at<600).map(t=>{const age=now-t.observed_at;return {...t,seen_age:age,historical:age>120,...(age>120?{qualified:false,exit_advice:null,reason:'Historical offer: last observed more than 2 minutes ago. Verify availability before acting.'}:{})}});
+  data.results=rows.filter(t=>t.qualified);data.near_misses=rows.filter(t=>!t.qualified);data.target_trades=rows.filter(t=>data.target_pet&&t.give.includes(data.target_pet));
+ }
+ const historyNote=$('history-note');if(historyNote)historyNote.textContent=tenMinuteView?'Showing offers observed in the last 10 minutes. Older offers appear in Needs review; availability is unconfirmed. History builds while the collector runs.':'';
  const excluded=new Set();
  if(data.mode==='preferred'){
   const dollars=Math.max(0,Number(localStorage.getItem('preferred_min_dollars')??10));
@@ -207,6 +217,7 @@ function render(force){
 document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{tab=b.dataset.tab;document.querySelectorAll('[data-tab]').forEach(x=>x.classList.toggle('active',x===b));render(true)});
 $('pause').onclick=async()=>{try{const r=await fetch('/stop',{method:'POST'});if(!r.ok)throw Error();stopped=true;clearTimeout(pollTimer);$('pause').disabled=true;$('pause').textContent='Stopped';if(state){state.running=false;render(true)}updateStamp()}catch{$('connection').textContent='Could not stop. Retry.'}};
 if($('refresh'))$('refresh').onclick=()=>{pollNow()};
+if($('scan-ten'))$('scan-ten').onclick=()=>{tenMinuteView=!tenMinuteView;$('scan-ten').textContent=tenMinuteView?'Back to live trades':'Scan last 10 minutes';$('scan-ten').setAttribute('aria-pressed',String(tenMinuteView));lastSig='';pollNow()};
 if($('mode-toggle'))$('mode-toggle').onclick=async()=>{
  const modes=['inventory','all','preferred'];const next=modes[(modes.indexOf(state?.mode)+1)%3];
  try{

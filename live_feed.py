@@ -55,6 +55,8 @@ def collect():
     for source in statuses:
         threading.Thread(target=source_loop, args=(source,), daemon=True, name='feed-'+source).start()
     seen = {}
+    recent = {}
+    history_started = time.time()
     while not stop.is_set():
         try:
             try:
@@ -88,8 +90,14 @@ def collect():
                 row['observed_at'] = trade['_seen_at']
                 rows.append(row)
             market_history.enrich(bot, rows)
+            for row in rows:
+                recent[row["trade_id"]] = row
+            recent = {k:r for k,r in recent.items() if now-r["observed_at"] < 600}
+            if len(recent) > 6000:
+                recent = dict(sorted(recent.items(), key=lambda item: item[1]["observed_at"], reverse=True)[:6000])
             with changed:
                 state.update(version=state['version']+1, generated_at=time.time(), trades=rows,
+                             recent_trades=list(recent.values()), history_started=history_started,
                              market_learning=market_history.summary, scoring_ms=round((time.perf_counter()-began)*1000, 1),
                              sources={'collector': 'Running' if 'Connected' in statuses.values() else 'Upstream unavailable / backing off',
                                       **statuses, 'StarPets': bot.sales_collector.status})

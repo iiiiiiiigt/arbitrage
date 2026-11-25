@@ -12,6 +12,7 @@ function advise(trade,outcomes,now=Date.now()){
  const gain=valid?trade.recv_usd*model.factor-trade.give_usd:null;
  const market=trade.market_evidence,marketFresh=!!(market?.available&&Number.isFinite(market.summary?.last_updated)&&now/1000-market.summary.last_updated<300);
  const result={model,gain,marketFresh,decision:'Review — insufficient evidence',kind:'review',reason:'Reliable prices and cash-sales evidence are required.'};
+ if(trade.historical||(Number.isFinite(trade.observed_at)&&now/1000-trade.observed_at>120))return{...result,reason:'This offer was last observed more than 2 minutes ago. Check that it still exists before considering any trade or follow-up.'};
  if(!valid)return result;
  if(gain<Math.max(1,trade.give_usd*.05))return{...result,decision:'Pass — margin too small',kind:'pass',reason:'Estimated extra value after calibration does not clear $1 and 5%. This is a resale-value comparison, not profit against your purchase cost.'};
  if(model.ready&&model.days>7)return{...result,reason:'Your completed sales in this sample took a median of '+model.days+' days. Review resale speed before committing.'};
