@@ -12,6 +12,7 @@ function screenPrices(data){
  for(const [id,t] of recentLocal)if(now-t.observed_at>=600)recentLocal.delete(id);
  if(tenMinuteView){
   const rows=[...recentLocal.values()].filter(t=>now-t.observed_at<600).map(t=>{const age=now-t.observed_at;return {...t,seen_age:age,historical:age>120,...(age>120?{qualified:false,exit_advice:null,reason:'Historical offer: last observed more than 2 minutes ago. Verify availability before acting.'}:{})}});
+  data.alert_trades=rows;
   data.results=rows.filter(t=>t.qualified);data.near_misses=rows.filter(t=>!t.qualified);data.target_trades=rows.filter(t=>data.target_pet&&t.give.includes(data.target_pet));
  }
  const historyNote=$('history-note');if(historyNote)historyNote.textContent=tenMinuteView?'Showing offers observed in the last 10 minutes. Older offers appear in Needs review; availability is unconfirmed. History builds while the collector runs.':'';

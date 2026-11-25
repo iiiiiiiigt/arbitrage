@@ -13,6 +13,7 @@ async function run(mode,trade){
 (async()=>{
  const t={trade_id:'123',give:['Parrot'],receive:['Cow'],give_usd:40,recv_usd:30,qualified:false,preferred_receive:false};
  let r=await run('all',t);assert.equal(r.sent.length,1);assert.match(JSON.stringify(r.sent),/Sales history is missing/);assert.match(r.sent[0].embeds[0].title,/-\$10.00/);assert.equal(r.elements['alert-percent'].disabled,true);
+ r=await run('all',{...t,historical:true});assert.equal(r.sent.length,1);assert.match(r.sent[0].content,/Historical offer/);
  r=await run('qualified',t);assert.equal(r.sent.length,0);
  r=await run('all',{...t,unknown:['Cow']});assert.equal(r.sent.length,1);assert.match(r.sent[0].embeds[0].title,/Unknown/);assert.doesNotMatch(JSON.stringify(r.sent),/NaN/);
  console.log('All-trade loss, unknown-price, default filtering and duplicate checks passed.');
