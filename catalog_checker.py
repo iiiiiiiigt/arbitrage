@@ -34,7 +34,7 @@ def snapshot():
                          checked_at=history.get('fetched_at'), listing_low=history.get('listing_low'),
                          shortlist=canonical(name) in shortlist))
     return dict(rows=rows, generated_at=time.time(), price_saved_at=bot.CATALOG_PATH.stat().st_mtime,
-                status=bot.sales_collector.status)
+                status=bot.sales_collector.status, progress=bot.sales_collector.progress())
 
 
 def register(server):

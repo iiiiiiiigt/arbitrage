@@ -61,6 +61,29 @@ class HistoryTests(unittest.TestCase):
                 result = c.fetch('panda|default|0|0', {'name': 'Panda'})
             self.assertEqual(len(result['product_ids']), 5)
 
+    def test_retry_reuses_successful_requests_without_partial_totals(self):
+        with tempfile.TemporaryDirectory() as temp:
+            c=HistoryCollector(Path(temp)/'history.json')
+            products=[dict(id=i,realName='panda',pumping='default') for i in (1,2)]
+            responses=[{'status':True,'count':2,'items':products},
+                       {'data':{'statistics':[]}},HistoryError('temporary'),
+                       {'data':{'statistics':[]}}]
+            with patch.object(c,'request',side_effect=responses) as request:
+                with self.assertRaises(HistoryError):c.fetch('panda|default|0|0',{'name':'Panda'})
+                result=c.fetch('panda|default|0|0',{'name':'Panda'})
+            self.assertEqual(request.call_count,4)
+            self.assertEqual(result['product_ids'],['1','2'])
+            self.assertEqual(c.cache_hits,2)
+
+    def test_progress_counts_unique_remaining_jobs(self):
+        with tempfile.TemporaryDirectory() as temp:
+            c=HistoryCollector(Path(temp)/'history.json')
+            c.pending={'a','b'};c.active_key='a';c.retries={'c':({},0)}
+            progress=c.progress()
+            self.assertEqual(progress['remaining'],3)
+            self.assertEqual(progress['queued'],1)
+            self.assertEqual(progress['retrying'],1)
+
     def test_errors_and_missing_schema_never_become_zero(self):
         for payload in [{}, {'data': None}, {'error': 'limited'}, {'data': {'statistics': [{'day': '2026-11-23', 'count': -1}]}}]:
             with self.assertRaises(HistoryError):

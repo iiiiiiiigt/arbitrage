@@ -98,6 +98,11 @@ class HistoryCollector:
         self.session = history_session()
         self.session.headers.update({'Accept': 'application/json', 'Origin': 'https://starpets.gg', 'Referer': 'https://starpets.gg/'})
         self.next_request = 0
+        self.catalog_cache = {}
+        self.statistics_cache = {}
+        self.active_key = None
+        self.completed = 0
+        self.cache_hits = 0
 
     def start(self):
         with self.lock:
@@ -149,7 +154,12 @@ class HistoryCollector:
         except Exception as exc:
             raise HistoryError(f'StarPets unavailable ({type(exc).__name__})', 15, True) from exc
 
-    def fetch(self, key, record):
+    def enumerate_products(self, record):
+        cache_key = (record['name'], record.get('type', 'pet'))
+        saved = self.catalog_cache.get(cache_key)
+        if saved and time.time() - saved[0] < 300:
+            self.cache_hits += 1
+            return saved[1]
         products = {}
         for page in range(1, 21):
             previous_count = len(products)
@@ -169,14 +179,40 @@ class HistoryCollector:
                 break
         else:
             raise HistoryError('Product enumeration exceeded the targeted-check limit')
+        self.catalog_cache = {k:v for k,v in self.catalog_cache.items() if time.time()-v[0]<300}
+        self.catalog_cache[cache_key] = (time.time(), products)
+        return products
+
+    def product_statistics(self, pid):
+        # Reuse successful requests on retries, never partial aggregates or errors.
+        cache_key = (pid, datetime.now(timezone.utc).date())
+        saved = self.statistics_cache.get(cache_key)
+        if saved and time.time()-saved[0] < 600:
+            self.cache_hits += 1
+            return saved[1]
+        rows = parse_statistics(self.request('GET', f'/api/v4/goods/{pid}/statistics',
+                                            params={'days': 30, 'currency': 'usd'}))
+        self.statistics_cache = {k:v for k,v in self.statistics_cache.items() if time.time()-v[0]<600}
+        self.statistics_cache[cache_key] = (time.time(), rows)
+        return rows
+
+    def progress(self):
+        with self.lock:
+            return dict(remaining=len(self.pending | set(self.retries)),
+                        queued=len(self.pending - {self.active_key}),
+                        retrying=len(self.retries), active=self.active_key,
+                        completed_since_start=self.completed, reused_requests=self.cache_hits,
+                        cooldown_seconds=max(0, round(self.retry_at-time.time())))
+
+    def fetch(self, key, record):
+        products = self.enumerate_products(record)
         ids = [pid for pid, item in products.items() if product_key(item) == key]
         if not ids:
             raise HistoryError('Exact variant is absent from the current product catalog')
         today = datetime.now(timezone.utc).date()
         totals = {(today - timedelta(days=i)).isoformat(): 0 for i in range(1, 8)}
         for pid in ids:
-            rows = parse_statistics(self.request('GET', f'/api/v4/goods/{pid}/statistics',
-                                                 params={'days': 30, 'currency': 'usd'}))
+            rows = self.product_statistics(pid)
             for day in totals:
                 totals[day] += rows.get(day, 0)
         prices = [float(products[pid]['price']) for pid in ids
@@ -197,11 +233,14 @@ class HistoryCollector:
             return 'Sales history has not been checked for this variant'
 
     def process_one(self, key, record):
+        with self.lock:
+            self.active_key = key
         try:
             self.status = 'Checking StarPets sales for ' + record['name']
             result = self.fetch(key, record)
             with self.lock:
                 self.records[key] = result
+                self.completed += 1
                 self.path.parent.mkdir(exist_ok=True)
                 temporary = self.path.with_suffix('.tmp')
                 temporary.write_text(json.dumps(self.records), encoding='utf-8')
@@ -229,6 +268,7 @@ class HistoryCollector:
         finally:
             with self.lock:
                 self.pending.discard(key)
+                self.active_key = None
 
     def work(self):
         while True:
