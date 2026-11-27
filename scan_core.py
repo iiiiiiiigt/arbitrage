@@ -294,6 +294,7 @@ def refresh(bot, opportunities, state):
         'in_window': len(state['trades']),
         'profit_summary': _profit_summary(results),
         'expired_summary': _profit_summary(state.get('archive') or []),
+        'offered_trades': bot.rank_trades(observed, [], min_stars=1, ignore_inventory=True) + bot.get_near_misses(observed, [], limit=len(observed), ignore_inventory=True),
         'alert_trades': results + near,
         'results': results, 'near_misses': near[:30], 'target_trades': targets,
         'stats': stats,
