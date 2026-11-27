@@ -30,7 +30,7 @@ def snapshot():
                          frost=frost, net=info.get('net') if info.get('reliable') else None,
                          gross=info.get('gross'), confidence=info.get('confidence', 'none'),
                          median_daily=demand['median_daily'], weekly_total=demand['weekly_total'],
-                         period_start=demand.get('period_start'), period_end=demand.get('period_end'),
+                         stale=demand.get('stale', False), period_start=demand.get('period_start'), period_end=demand.get('period_end'),
                          checked_at=history.get('fetched_at'), listing_low=history.get('listing_low'),
                          shortlist=canonical(name) in shortlist))
     return dict(rows=rows, generated_at=time.time(), price_saved_at=bot.CATALOG_PATH.stat().st_mtime,

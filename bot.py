@@ -214,7 +214,7 @@ def with_demand(trade):
 
 def pet_sales_demand(record):
     cached = sales_collector.get((record or {}).get('_key'))
-    metric = weekly_demand(cached or record)
+    metric = weekly_demand(cached or record, allow_stale=True)
     if metric['median_daily'] is None:
         metric['reason'] = sales_collector.describe((record or {}).get('_key'))
     return metric

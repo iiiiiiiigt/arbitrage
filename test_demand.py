@@ -11,6 +11,16 @@ class DemandTests(unittest.TestCase):
         d=weekly_demand(self.record([7,8,9,10,11,12,70]),date(2026,11,24))
         self.assertEqual(d['median_daily'],10)
         self.assertEqual(d['weekly_total'],127)
+    def test_saved_complete_week_can_be_used_without_disabling_refresh(self):
+        r=self.record([7,8,9,10,11,12,70])
+        today=date(2026,11,27)
+        self.assertIsNone(weekly_demand(r,today)['median_daily'])
+        d=weekly_demand(r,today,allow_stale=True)
+        self.assertEqual(d['median_daily'],10)
+        self.assertTrue(d['stale'])
+        self.assertEqual(d['period_end'],'2026-11-23')
+        self.assertIsNone(weekly_demand(self.record([7]*6),today,allow_stale=True)['median_daily'])
+
     def test_missing_day_not_zero(self):
         self.assertIsNone(weekly_demand(self.record([7]*6),date(2026,11,24))['median_daily'])
     def test_verified_zeros(self):
