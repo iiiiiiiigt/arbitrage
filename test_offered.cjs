@@ -7,3 +7,5 @@ assert.equal(filter(rows,'Fallow Deer','')[0].trade_id,'two');
 assert.equal(filter(rows,'Deer').length,0);
 assert.equal(filter(rows,'').length,0);
 console.log('Offering search: receive side, exact names, variants, repeated copies, losses and unknown prices passed.');
+
+const html=require('node:fs').readFileSync('templates/results_clean.html','utf8');for(const id of ['offered-pet','offered-pets','offered-variant','offered-count','offered-search','offered-note'])assert.ok(html.includes('id="'+id+'"'));
