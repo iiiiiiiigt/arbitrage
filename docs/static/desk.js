@@ -156,7 +156,7 @@ function card(t){
 const BEST_MIN=10;
 function bestFloor(){return Number((state.profit_summary||{}).threshold)||BEST_MIN}
 function visibleList(){
- if(tab==='offered')return OfferingSearch.filter(tenMinuteView?(state.offered_recent||state.offered_trades||[]):(state.offered_trades||[]),$('offered-pet').value,$('offered-variant').value,$('offered-count').value).map(t=>{const age=Number.isFinite(t.observed_at)?Date.now()/1000-t.observed_at:t.seen_age;return age>120?{...t,historical:true,seen_age:age,exit_advice:null,reason:'Historical offer — verify availability'}:t});
+ if(tab==='offered')return OfferingSearch.filter((state.offered_recent||state.offered_trades||[]).filter(t=>!Number.isFinite(t.observed_at)||Date.now()/1000-t.observed_at<600),$('offered-pet').value,$('offered-variant').value,$('offered-count').value).map(t=>{const age=Number.isFinite(t.observed_at)?Date.now()/1000-t.observed_at:t.seen_age;return age>120?{...t,historical:true,seen_age:age,exit_advice:null,reason:'Historical offer — verify availability'}:t});
  if(tab==='expired')return state.expired||[];
  if(tab==='best')return (state.results||[]).filter(t=>(t.profit_usd||0)>=bestFloor())
    .sort((a,b)=>(b.profit_usd||0)-(a.profit_usd||0));
@@ -273,5 +273,5 @@ $('research-go').onclick=research;$('research-filter').oninput=researchTable;win
  for(const p of pets){const o=document.createElement('option');o.value=p.name;$('offered-pets').append(o)}
  function variants(){const pet=pets.find(p=>p.name.toLowerCase()===input.value.trim().toLowerCase());variant.replaceChildren();for(const [value,label] of [['any','Any variant'],...Object.keys(pet?.variants||{}).map(v=>[v,v||'Normal · no potions'])]){const o=document.createElement('option');o.value=value;o.textContent=label;variant.append(o)}}
  input.onchange=variants;
- $('offered-search').onclick=()=>{if(!pets.some(p=>p.name.toLowerCase()===input.value.trim().toLowerCase())){$('offered-note').textContent='Choose a pet name from the suggestions.';return}tab='offered';document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));$('offered-note').textContent='Showing every observed matching offer, regardless of inventory, profit or demand. Repeated copies count separately.';render(true)};
+ $('offered-search').onclick=()=>{if(!pets.some(p=>p.name.toLowerCase()===input.value.trim().toLowerCase())){$('offered-note').textContent='Choose a pet name from the suggestions.';return}tab='offered';document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));$('offered-note').textContent='Showing matches observed in the last 10 minutes, regardless of inventory, profit or demand. Older offers need availability checks; this is not a search of every listing on the source sites.';render(true)};
 })().catch(console.error);
